@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon silhouette: solid shield with the checkmark knocked out. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M54,24 L80,34 V54 C80,72 69,81 54,88 C39,81 28,72 28,54 V34 Z M45,55 L51.5,61.5 L64,48.5 L59.5,44 L51.5,52.5 L49.5,50.5 Z" />
+</vector>
