@@ -296,7 +296,7 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                     .fillMaxWidth()
                     .padding(horizontal = 16.dp, vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)
             ) {
                 StepButton(FgIcons.ChevronRight, rotated = true) {
                     step -= if (period == Period.TODAY || period == Period.YESTERDAY) 1 else 7
@@ -438,30 +438,36 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                         )
                     }
 
-                    // Total and focus sit tight together: icon, label and
-                    // value are one left-aligned unit — no edge-to-edge row.
+                    // Total and focus share one row — stacked, they read as two
+                    // unrelated facts and leave a ragged gap under the legend.
                     Spacer(Modifier.height(8.dp))
-                    StatLine(
-                        icon = FgIcons.Eye,
-                        label = "Total usage",
-                        value = if (displayTotal <= 0) "0m" else formatDuration(displayTotal)
-                    )
-                    if (isToday) {
-                        var focusedToday by remember { mutableIntStateOf(-1) }
-                        LaunchedEffect(Unit) {
-                            runCatching {
-                                // Fold a session that just ended, then read today's total.
-                                FocusSession.finalize(container)
-                                focusedToday = FocusSession.accruedTodayMinutes(container)
-                            }
-                        }
-                        Spacer(Modifier.height(2.dp))
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         StatLine(
-                            icon = FgIcons.Stopwatch,
-                            label = "Focused today",
-                            value = if (focusedToday <= 0) "0m"
-                            else formatDuration(focusedToday * 60_000L)
+                            modifier = Modifier.weight(1f),
+                            icon = FgIcons.Eye,
+                            label = "Total usage",
+                            value = if (displayTotal <= 0) "0m" else formatDuration(displayTotal)
                         )
+                        if (isToday) {
+                            var focusedToday by remember { mutableIntStateOf(-1) }
+                            LaunchedEffect(Unit) {
+                                runCatching {
+                                    // Fold a session that just ended, then read today's total.
+                                    FocusSession.finalize(container)
+                                    focusedToday = FocusSession.accruedTodayMinutes(container)
+                                }
+                            }
+                            StatLine(
+                                modifier = Modifier.weight(1f),
+                                icon = FgIcons.Stopwatch,
+                                label = "Focused today",
+                                value = if (focusedToday <= 0) "0m"
+                                else formatDuration(focusedToday * 60_000L)
+                            )
+                        }
                     }
                 }
             }
@@ -629,9 +635,10 @@ private fun rangeLabel(range: Range, today: LocalDate): String = when {
 private fun StatLine(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
-    value: String
+    value: String,
+    modifier: Modifier = Modifier
 ) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
         FgIcon(icon, null, size = 18.dp)
         Spacer(Modifier.width(8.dp))
         Text(
