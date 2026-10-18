@@ -89,7 +89,9 @@ private data class DrawerItem(
 @Composable
 fun FocusGuardApp() {
     val container = LocalAppContainer.current
-    val onboardingDone by container.settings.onboardingDone.collectAsState(initial = false)
+    // Warm StateFlow: its current value seeds `collectAsState`, so a returning
+    // user's first frame is already the real screen (no onboarding flash).
+    val onboardingDone by container.onboardingDone.collectAsState()
 
     if (!onboardingDone) {
         OnboardingScreen()

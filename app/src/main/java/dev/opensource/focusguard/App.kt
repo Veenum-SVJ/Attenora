@@ -108,9 +108,20 @@ class AppContainer(val app: Context) {
     val grayActive: StateFlow<Boolean> =
         settings.grayActive.stateIn(scope, SharingStarted.Eagerly, false)
 
+    /**
+     * Warm cache of the onboarding flag. `collectAsState()` on a StateFlow uses
+     * its current value as the initial, so a returning user's first frame
+     * already shows the real screen instead of flashing the onboarding flow
+     * for one frame and then recomposing the whole app tree.
+     */
+    val onboardingDone: StateFlow<Boolean> =
+        settings.onboardingDone.stateIn(scope, SharingStarted.Eagerly, false)
+
     init {
-        val t0 = android.os.SystemClock.elapsedRealtime()
-        Notifier.ensureChannels(app)
+        // Notification channels are binder IPC to system_server; they are not
+        // needed until the first notification is posted (and every `post`
+        // re-creates them anyway), so this stays off the startup critical path.
+        scope.launch { Notifier.ensureChannels(app) }
 
         // Keep alarms in sync with schedule edits; Flow collection also
         // re-arms everything when the app process starts.

@@ -56,11 +56,14 @@ import dev.opensource.focusguard.ui.common.FgCard
 import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.PageHeader
+import dev.opensource.focusguard.ui.common.appIconBitmap
 import dev.opensource.focusguard.ui.common.appLabel
 import dev.opensource.focusguard.enforcement.FocusSession
 import dev.opensource.focusguard.ui.common.formatDuration
 import dev.opensource.focusguard.ui.icons.FgIcons
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -110,6 +113,12 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     // rows are already in the database (reproduced on emulator, 2026-10-18).
     var refreshTick by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
+        // Yield the opening frame before the UsageStats drain starts: reconcile
+        // is a multi-hundred-ms Binder IPC + DB write burst, and on a cold start
+        // it otherwise competes with the first (most expensive) frame while the
+        // app is still class-loading. One frame is enough — `withFrameNanos`
+        // resumes on the *next* frame's dispatch, after this frame's draw.
+        androidx.compose.runtime.withFrameNanos { }
         val t0 = android.os.SystemClock.elapsedRealtime()
         runCatching { container.usage.reconcileNow() }
         android.util.Log.d(
@@ -197,6 +206,24 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     val orderedStats = remember(appStats, metric, sortDesc) {
         val byValue = compareBy<AppStat> { if (metric == Metric.TIME) it.ms else it.launches.toLong() }
         if (sortDesc) appStats.sortedWith(byValue.reversed()) else appStats.sortedWith(byValue)
+    }
+
+    // First scroll janks because every row decodes its launcher icon (a
+    // PackageManager IPC + bitmap decode) and resolves its label on the main
+    // thread. Warm the process-wide caches in the background as soon as the
+    // list is known — the rows then only hit a map. Deferred one frame so the
+    // opening frame never waits on it. Best-effort: the caches already swallow
+    // failures.
+    LaunchedEffect(appStats) {
+        val pkgs = appStats.map { it.pkg }
+        if (pkgs.isEmpty()) return@LaunchedEffect
+        androidx.compose.runtime.withFrameNanos { }
+        withContext(Dispatchers.IO) {
+            pkgs.forEach { pkg ->
+                appLabel(container.app, pkg)
+                appIconBitmap(container.app, pkg)
+            }
+        }
     }
 
     // Chart bars.
@@ -582,7 +609,7 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                     FgIcon(FgIcons.Info, "About usage patterns", size = 16.dp)
                 }
             }
-            items(tips.filter { it.first !in dismissedTips }) { (id, text) ->
+            items(tips.filter { it.first !in dismissedTips }, key = { it.first }) { (id, text) ->
                 FgCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
                     Row(
                         Modifier.padding(start = 16.dp, end = 8.dp, top = 12.dp, bottom = 12.dp),
