@@ -262,22 +262,6 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
         }
     }
 
-    // Ribbon: per-day top apps + "Other", in display order.
-    val ribbonDays = remember(range, visibleRows) {
-        visibleRows
-            .groupBy { it.day }
-            .toSortedMap()
-            .map { (day, rs) ->
-                val sorted = rs.sortedByDescending { it.usedMs }
-                val top = sorted.take(4).map { appLabel(context, it.packageName) to it.usedMs }
-                val rest = sorted.drop(4).sumOf { it.usedMs }
-                TimelineDay(
-                    label = day.substring(5), // MM-DD
-                    shares = if (rest > 0) top + ("Other" to rest) else top
-                )
-            }
-    }
-
     // Usage patterns (rule-based, dismissible).
     val tips = remember(visibleRows, hourly, grandTotal) {
         val out = ArrayList<Pair<String, String>>()
@@ -376,46 +360,33 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
         item {
             FgCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Text(
-                        "Usage Time",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(10.dp))
-
-                    // Style switcher: full-width segmented control — five
-                    // styles don't fit as bare icons next to the title.
                     Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        listOf(
-                            ChartStyle.BAR to "Bars",
-                            ChartStyle.LINE to "Line",
-                            ChartStyle.DONUT to "Donut",
-                            ChartStyle.HEATMAP to "Heat",
-                            ChartStyle.TIMELINE to "Ribbon"
-                        ).forEach { (s, label) ->
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .background(
-                                        if (chartStyle == s) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                                        else androidx.compose.ui.graphics.Color.Transparent
-                                    )
-                                    .clickable { chartStyle = s }
-                                    .padding(vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = if (chartStyle == s) FontWeight.SemiBold else FontWeight.Normal,
-                                    color = if (chartStyle == s) MaterialTheme.colorScheme.primary
-                                    else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
+                        Text(
+                            "Usage Time",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(Modifier.weight(1f))
+                        // Style switcher: four tiny icons tucked into the right
+                        // edge of the title row — no full-width segmented bar.
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            ChartStyleChip(FgIcons.ChartBar, "Bars", chartStyle == ChartStyle.BAR) {
+                                chartStyle = ChartStyle.BAR
+                            }
+                            ChartStyleChip(FgIcons.ChartLine, "Line", chartStyle == ChartStyle.LINE) {
+                                chartStyle = ChartStyle.LINE
+                            }
+                            ChartStyleChip(FgIcons.ChartDonut, "Donut", chartStyle == ChartStyle.DONUT) {
+                                chartStyle = ChartStyle.DONUT
+                            }
+                            ChartStyleChip(FgIcons.ChartHeat, "Heat", chartStyle == ChartStyle.HEATMAP) {
+                                chartStyle = ChartStyle.HEATMAP
                             }
                         }
                     }
@@ -426,8 +397,6 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                         ChartStyle.BAR, ChartStyle.LINE, ChartStyle.DONUT ->
                             chartBars.none { it.valueMs > 0L }
                         ChartStyle.HEATMAP -> heatRows.all { r -> r.hours.all { it == 0L } }
-                        ChartStyle.TIMELINE ->
-                            ribbonDays.isEmpty() || ribbonDays.all { d -> d.shares.all { s -> s.second <= 0L } }
                     }
                     if (noData) {
                         Box(
@@ -447,7 +416,6 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                             ChartStyle.BAR, ChartStyle.LINE -> UsageChart(bars = chartBars, style = chartStyle)
                             ChartStyle.DONUT -> DonutChart(bars = chartBars.filter { it.valueMs > 0L })
                             ChartStyle.HEATMAP -> HeatmapChart(rows = heatRows)
-                            else -> RibbonChart(days = ribbonDays)
                         }
                     }
 
@@ -680,6 +648,34 @@ private fun StatLine(
         )
     }
 }
+@Composable
+private fun ChartStyleChip(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    name: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        Modifier
+            .size(30.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(
+                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                else androidx.compose.ui.graphics.Color.Transparent
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        FgIcon(
+            icon,
+            if (selected) "$name chart, selected" else "$name chart",
+            size = 17.dp,
+            tint = if (selected) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
 @Composable
 private fun StepButton(icon: androidx.compose.ui.graphics.vector.ImageVector, rotated: Boolean = false, onClick: () -> Unit) {
     Box(

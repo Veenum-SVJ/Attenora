@@ -44,15 +44,12 @@ import kotlin.math.sqrt
 /** One chart column. */
 data class ChartBar(val label: String, val valueMs: Long)
 
-/** Ribbon chart row: period label + per-slice usage totals. */
-data class TimelineDay(val label: String, val shares: List<Pair<String, Long>>)
-
 /** Heatmap row: day label -> 24 hourly millisecond totals. */
 data class HeatRow(val label: String, val hours: LongArray)
 
-enum class ChartStyle { BAR, LINE, DONUT, HEATMAP, TIMELINE }
+enum class ChartStyle { BAR, LINE, DONUT, HEATMAP }
 
-/** Shared slice palette for donut/ribbon (assigned by package-name hash). */
+/** Shared slice palette for the donut (assigned by package-name hash). */
 val ChartSliceColors = listOf(
     Color(0xFF7C6BF2), // lavender accent
     Color(0xFF34C77B),
@@ -67,7 +64,7 @@ fun sliceColorFor(key: String): Color =
 
 /**
  * Hand-drawn usage chart (no chart library). BAR and LINE share this column
- * canvas; DONUT/HEATMAP/TIMELINE have their own composables below. Every style
+ * canvas; DONUT and HEATMAP have their own composables below. Every style
  * replays its entrance animation on switch, so toggling always reads as a real
  * change. Pure Compose Canvas.
  */
@@ -391,87 +388,7 @@ fun HeatmapChart(
     }
 }
 
-/** Stacked ribbon per day: which app ate which slice of the time. */
-@Composable
-fun RibbonChart(
-    days: List<TimelineDay>,
-    modifier: Modifier = Modifier
-) {
-    val measurer = rememberTextMeasurer()
-    val entrance = remember { Animatable(0f) }
-    LaunchedEffect(days) { entrance.animateTo(1f, tween(600)) }
-    val labelColor = MaterialThemeColors.label
-    val trackColor = MaterialThemeColors.track
-
-    Box(
-        modifier
-            .fillMaxWidth()
-            .height(230.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Canvas(Modifier.fillMaxWidth().height(230.dp)) {
-            if (days.isEmpty()) return@Canvas
-            val labelW = 44f
-            val topPad = 6f
-            val bottomPad = 10f
-            val rowH = min(
-                (size.height - topPad - bottomPad) / days.size,
-                40f
-            )
-            val ribbonH = (rowH * 0.62f).coerceAtLeast(8f)
-            val gridW = size.width - labelW - 6f
-            val gapY = rowH - ribbonH
-
-            days.forEachIndexed { index, day ->
-                val y = topPad + index * rowH + gapY / 2f
-                val dayLayout = measurer.measure(
-                    day.label,
-                    TextStyle(color = labelColor, fontSize = 10.sp)
-                )
-                drawText(
-                    dayLayout,
-                    topLeft = Offset(
-                        0f,
-                        y + (ribbonH - dayLayout.size.height) / 2f
-                    )
-                )
-                val total = day.shares.sumOf { it.second }
-                if (total <= 0L) {
-                    drawRoundRect(
-                        color = trackColor.copy(alpha = 0.35f),
-                        topLeft = Offset(labelW, y),
-                        size = Size(gridW, ribbonH),
-                        cornerRadius = CornerRadius(ribbonH / 2f, ribbonH / 2f)
-                    )
-                    return@forEachIndexed
-                }
-                val scale = gridW * entrance.value
-                var x = labelW
-                day.shares.forEachIndexed { si, (_, ms) ->
-                    if (ms <= 0L) return@forEachIndexed
-                    val w = (ms.toFloat() / total) * scale
-                    val isFirst = si == 0
-                    val isLast = si == day.shares.size - 1
-                    drawRoundRect(
-                        color = ChartSliceColors[si % ChartSliceColors.size],
-                        topLeft = Offset(x, y),
-                        size = Size(
-                            (w - 1.5f).coerceAtLeast(1f),
-                            ribbonH
-                        ),
-                        cornerRadius = CornerRadius(
-                            if (isFirst) ribbonH / 2f else 0f,
-                            if (isLast) ribbonH / 2f else 0f
-                        )
-                    )
-                    x += w
-                }
-            }
-        }
-    }
-}
-
-/** Compact color key for donut / ribbon. */
+/** Compact color key for the donut. */
 @Composable
 fun SliceKey(labels: List<String>) {
     if (labels.isEmpty()) return

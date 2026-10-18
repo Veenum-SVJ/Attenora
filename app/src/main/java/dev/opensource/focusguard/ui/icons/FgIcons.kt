@@ -101,19 +101,33 @@ object FgIcons {
 
     // ---- Tabs / sections -----------------------------------------------------
 
-    /** Usage Stats tab: bar chart. */
+    /** Usage Stats: bar chart (Lucide "chart-column"). */
     val ChartBar = strokes("chart_bar") {
-        moveTo(4f, 20f); lineTo(4f, 12f)
-        moveTo(9.5f, 20f); lineTo(9.5f, 5f)
-        moveTo(15f, 20f); lineTo(15f, 9f)
-        moveTo(20.5f, 20f); lineTo(20.5f, 14f)
-        moveTo(3f, 20f); lineTo(21f, 20f)
+        moveTo(3.5f, 3.5f); lineTo(3.5f, 20.5f); lineTo(20.5f, 20.5f)
+        moveTo(8.2f, 20.5f); lineTo(8.2f, 14.2f)
+        moveTo(12.9f, 20.5f); lineTo(12.9f, 9.4f)
+        moveTo(17.6f, 20.5f); lineTo(17.6f, 16.4f)
     }
 
-    /** Usage Stats chart toggle: line chart. */
+    /** Usage Stats chart toggle: line chart (Lucide "chart-line"). */
     val ChartLine = strokes("chart_line") {
-        moveTo(3f, 17f); lineTo(8.5f, 11f); lineTo(13f, 14f); lineTo(21f, 6f)
-        moveTo(3f, 20f); lineTo(21f, 20f)
+        moveTo(3.5f, 3.5f); lineTo(3.5f, 20.5f); lineTo(20.5f, 20.5f)
+        moveTo(6.8f, 15.6f); lineTo(10.6f, 11.2f); lineTo(14.2f, 13.8f); lineTo(19.2f, 7.2f)
+    }
+
+    /** Usage Stats chart toggle: donut chart. */
+    val ChartDonut = strokes("chart_donut") {
+        circle(12f, 12f, 8.6f)
+        circle(12f, 12f, 3.6f)
+    }
+
+    /** Usage Stats chart toggle: heat grid (Lucide "grid-3x3"). */
+    val ChartHeat = strokes("chart_heat") {
+        moveTo(4f, 3.5f); lineTo(20f, 3.5f); lineTo(20f, 20.5f); lineTo(4f, 20.5f); close()
+        moveTo(4f, 9.2f); lineTo(20f, 9.2f)
+        moveTo(4f, 14.8f); lineTo(20f, 14.8f)
+        moveTo(9.3f, 3.5f); lineTo(9.3f, 20.5f)
+        moveTo(14.7f, 3.5f); lineTo(14.7f, 20.5f)
     }
 
     /** Usage Limits tab: speedometer/gauge. */
