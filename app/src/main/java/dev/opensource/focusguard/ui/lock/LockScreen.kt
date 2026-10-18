@@ -2,6 +2,7 @@ package dev.opensource.focusguard.ui.lock
 
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,11 +13,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -33,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -40,7 +40,9 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import dev.opensource.focusguard.security.PinManager
 import dev.opensource.focusguard.ui.FocusGuardApp
+import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.LocalAppContainer
+import dev.opensource.focusguard.ui.icons.FgIcons
 import kotlinx.coroutines.launch
 
 /**
@@ -97,11 +99,11 @@ private fun LockScreen(expectedHash: String, biometricOn: Boolean, onUnlock: () 
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            Icons.Default.Lock,
+        FgIcon(
+            FgIcons.Lock,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(48.dp)
+            size = 48.dp
         )
         Spacer(Modifier.height(16.dp))
         Text("Enter your PIN", style = MaterialTheme.typography.titleLarge)
@@ -115,12 +117,14 @@ private fun LockScreen(expectedHash: String, biometricOn: Boolean, onUnlock: () 
         Spacer(Modifier.height(20.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             repeat(4) { i ->
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = null,
-                    tint = if (i < pin.length) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.outline,
-                    modifier = Modifier.size(18.dp)
+                Box(
+                    Modifier
+                        .size(if (i < pin.length) 14.dp else 10.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (i < pin.length) MaterialTheme.colorScheme.primary
+                            else MaterialTheme.colorScheme.outline
+                        )
                 )
             }
         }
@@ -158,7 +162,7 @@ private fun LockScreen(expectedHash: String, biometricOn: Boolean, onUnlock: () 
             TextButton(onClick = {
                 activity?.let { a -> promptBiometric(a) { ok -> if (ok) onUnlock() } }
             }) {
-                Icon(Icons.Default.Lock, contentDescription = null)
+                FgIcon(FgIcons.User, contentDescription = null, size = 20.dp)
                 Spacer(Modifier.size(8.dp))
                 Text("Unlock with biometrics")
             }

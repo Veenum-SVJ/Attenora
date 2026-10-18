@@ -120,7 +120,9 @@ fun UsageChart(
             )
 
             if (style == ChartStyle.BAR) {
-                val barWidth = slot * 0.58f
+                // Cap the bar width so a single bar (e.g. one active hour on
+                // the app-detail chart) reads as a bar, not a full-width block.
+                val barWidth = (slot * 0.58f).coerceAtMost(72f)
                 bars.forEachIndexed { index, bar ->
                     if (bar.valueMs <= 0L) return@forEachIndexed
                     val h = (bar.valueMs.toFloat() / maxValue) * chartHeight * anim

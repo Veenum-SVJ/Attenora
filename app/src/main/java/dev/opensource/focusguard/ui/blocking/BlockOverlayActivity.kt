@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,10 +15,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -29,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -36,7 +36,10 @@ import dev.opensource.focusguard.FocusApp
 import dev.opensource.focusguard.data.FocusSchedule
 import dev.opensource.focusguard.data.UnlockChallenge
 import dev.opensource.focusguard.enforcement.Notifier
+import dev.opensource.focusguard.ui.common.AppIcon
+import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.appLabel
+import dev.opensource.focusguard.ui.icons.FgIcons
 import dev.opensource.focusguard.ui.theme.FocusGuardTheme
 import kotlinx.coroutines.flow.first
 import java.time.Instant
@@ -170,12 +173,26 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        Icon(
-            Icons.Default.Warning,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(72.dp)
-        )
+        Box(
+            Modifier
+                .size(104.dp)
+                .clip(CircleShape)
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center
+        ) {
+            // Show the blocked app's icon where we know it, otherwise the
+            // custom block glyph — never a generic Material icon.
+            if (pkg != null && reason != BlockOverlayActivity.REASON_BLOCK_ALL) {
+                AppIcon(pkg, size = 72.dp)
+            } else {
+                FgIcon(
+                    FgIcons.Block,
+                    null,
+                    size = 52.dp,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
         Spacer(Modifier.height(24.dp))
         Text(
             title,
