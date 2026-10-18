@@ -114,11 +114,45 @@ fun daysSummary(mask: Int): String {
 
 private val labelCache = ConcurrentHashMap<String, String>()
 
+/**
+ * Human names for the packages we reference in UI (in-app blocking, limits)
+ * but that are not necessarily installed on the device, so
+ * PackageManager has no label to give us and we'd otherwise show
+ * "com.instagram.android".
+ */
+private val knownAppLabels = mapOf(
+    "com.google.android.youtube" to "YouTube",
+    "app.revanced.android.youtube" to "YouTube",
+    "com.vanced.android.youtube" to "YouTube",
+    "com.google.android.apps.youtube.music" to "YouTube Music",
+    "com.instagram.android" to "Instagram",
+    "com.instagram.lite" to "Instagram Lite",
+    "com.facebook.katana" to "Facebook",
+    "com.facebook.lite" to "Facebook Lite",
+    "com.facebook.orca" to "Messenger",
+    "com.snapchat.android" to "Snapchat",
+    "com.twitter.android" to "X",
+    "com.zhiliaoapp.musically" to "TikTok",
+    "com.ss.android.ugc.trill" to "TikTok",
+    "com.whatsapp" to "WhatsApp",
+    "com.whatsapp.w4b" to "WhatsApp Business",
+    "org.telegram.messenger" to "Telegram",
+    "com.reddit.frontpage" to "Reddit",
+    "com.spotify.music" to "Spotify",
+    "com.netflix.mediaclient" to "Netflix",
+    "com.discord" to "Discord",
+    "com.pinterest" to "Pinterest",
+    "com.linkedin.android" to "LinkedIn",
+    "com.google.android.apps.maps" to "Maps",
+    "com.android.chrome" to "Chrome"
+)
+
 fun appLabel(context: Context, pkg: String): String = labelCache.getOrPut(pkg) {
-    runCatching {
+    val resolved = runCatching {
         val pm = context.packageManager
         pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
-    }.getOrDefault(pkg)
+    }.getOrNull()
+    resolved?.takeIf { it.isNotBlank() && it != pkg } ?: knownAppLabels[pkg] ?: pkg
 }
 
 /** Process-wide icon cache: decoding a Drawable on every recomposition is a
@@ -355,8 +389,8 @@ fun requestNotificationPermission(context: Context) {
 @Composable
 fun PageHeader(
     title: String,
-    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onBack: (() -> Unit)? = null,
     subtitle: String? = null,
     trailing: (@Composable () -> Unit)? = null
 ) {

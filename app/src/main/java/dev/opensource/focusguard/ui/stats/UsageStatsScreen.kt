@@ -286,34 +286,33 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
             }
         }
 
-        // Period chips — horizontally scrollable, but visually centred.
+        // Period chips — scroll only if they ever overflow, but edge-padded so
+        // the first/last chip never sit flush against the screen edge.
         item {
-            Box(
+            Row(
                 Modifier
                     .fillMaxWidth()
                     .padding(vertical = 4.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    Modifier
-                        .align(Alignment.Center)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Period.values().forEach { p ->
-                        Chip(
-                            label = p.chip,
-                            selected = period == p,
-                            onClick = {
-                                if (p == Period.CUSTOM) {
-                                    showPicker = true
-                                } else {
-                                    period = p
-                                    step = 0
-                                }
+                Spacer(Modifier.width(10.dp))
+                Period.values().forEach { p ->
+                    Chip(
+                        label = p.chip,
+                        selected = period == p,
+                        onClick = {
+                            if (p == Period.CUSTOM) {
+                                showPicker = true
+                            } else {
+                                period = p
+                                step = 0
                             }
-                        )
-                    }
+                        }
+                    )
                 }
+                Spacer(Modifier.width(10.dp))
             }
         }
 
@@ -574,7 +573,7 @@ private fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
                 else MaterialTheme.colorScheme.surface
             )
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp)
+            .padding(horizontal = 11.dp, vertical = 8.dp)
     ) {
         Text(
             label,

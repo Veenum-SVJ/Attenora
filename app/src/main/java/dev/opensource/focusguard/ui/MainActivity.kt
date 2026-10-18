@@ -4,10 +4,14 @@ import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import dev.opensource.focusguard.FocusApp
 import dev.opensource.focusguard.data.AppIconShape
@@ -67,7 +71,15 @@ class MainActivity : FragmentActivity() {
                     LocalTabChipShape provides tabChipShp
                 ) {
                     FocusGuardTheme(darkTheme = darkTheme) {
-                        LockGate(unlocked = unlocked, onUnlock = { unlocked.value = true })
+                        // Paint the themed background edge-to-edge so onboarding
+                        // and the lock screen (which sit outside the app Scaffold)
+                        // don't fall through to the dark system window background.
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = MaterialTheme.colorScheme.background
+                        ) {
+                            LockGate(unlocked = unlocked, onUnlock = { unlocked.value = true })
+                        }
                     }
                 }
             }

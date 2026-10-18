@@ -63,6 +63,7 @@ class SettingsRepository(private val context: Context) {
         val BIOMETRIC = booleanPreferencesKey("biometric_enabled")
         val BLOCK_ALL_UNTIL = longPreferencesKey("block_all_until")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val ONBOARDING_STEP = intPreferencesKey("onboarding_step")
         val REMINDER_MINUTE = intPreferencesKey("reminder_minute")
         val WEB_BLOCKING = booleanPreferencesKey("web_blocking_on")
 
@@ -116,6 +117,8 @@ class SettingsRepository(private val context: Context) {
     val biometricEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.BIOMETRIC] ?: true }
     val blockAllUntil: Flow<Long> = context.dataStore.data.map { it[Keys.BLOCK_ALL_UNTIL] ?: 0L }
     val onboardingDone: Flow<Boolean> = context.dataStore.data.map { it[Keys.ONBOARDING_DONE] ?: false }
+    /** Last onboarding step the user reached, so setup survives process death. */
+    val onboardingStep: Flow<Int> = context.dataStore.data.map { it[Keys.ONBOARDING_STEP] ?: 0 }
     /** -1 = disabled; otherwise minutes after midnight. */
     val reminderMinute: Flow<Int> = context.dataStore.data.map { it[Keys.REMINDER_MINUTE] ?: -1 }
     val webBlockingOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.WEB_BLOCKING] ?: false }
@@ -183,6 +186,8 @@ class SettingsRepository(private val context: Context) {
     suspend fun setBiometric(on: Boolean) = context.dataStore.edit { it[Keys.BIOMETRIC] = on }
     suspend fun setBlockAllUntil(time: Long) = context.dataStore.edit { it[Keys.BLOCK_ALL_UNTIL] = time }
     suspend fun setOnboardingDone(on: Boolean) = context.dataStore.edit { it[Keys.ONBOARDING_DONE] = on }
+    suspend fun setOnboardingStep(step: Int) =
+        context.dataStore.edit { it[Keys.ONBOARDING_STEP] = step.coerceAtLeast(0) }
     suspend fun setReminderMinute(minute: Int) = context.dataStore.edit { it[Keys.REMINDER_MINUTE] = minute }
     suspend fun setWebBlocking(on: Boolean) = context.dataStore.edit { it[Keys.WEB_BLOCKING] = on }
 

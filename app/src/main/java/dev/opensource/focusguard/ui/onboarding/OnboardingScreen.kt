@@ -2,7 +2,9 @@ package dev.opensource.focusguard.ui.onboarding
 
 import android.content.Intent
 import android.provider.Settings
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -33,6 +36,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -40,10 +44,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import dev.opensource.focusguard.enforcement.FocusGuardAccessibilityService
+import dev.opensource.focusguard.ui.common.FgCard
+import dev.opensource.focusguard.ui.common.FgIcon
+import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.hasNotificationPermission
 import dev.opensource.focusguard.ui.common.hasUsageAccess
 import dev.opensource.focusguard.ui.common.isAccessibilityServiceEnabled
 import dev.opensource.focusguard.ui.common.requestNotificationPermission
+import dev.opensource.focusguard.ui.icons.FgIcons
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 private const val TOTAL_STEPS = 4
@@ -61,6 +70,16 @@ fun OnboardingScreen() {
     }
     var notifGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var showDisclosure by remember { mutableStateOf(false) }
+
+    // Restore the last step after process death, then keep it mirrored in
+    // DataStore so a mid-setup kill doesn't send the user back to step 1.
+    LaunchedEffect(Unit) {
+        val saved = runCatching { container.settings.onboardingStep.first() }.getOrDefault(0)
+        if (saved in 1 until TOTAL_STEPS) step = saved
+    }
+    LaunchedEffect(step) {
+        runCatching { container.settings.setOnboardingStep(step) }
+    }
 
     val lifecycleOwner = LocalLifecycleOwner.current
     DisposableEffect(lifecycleOwner) {
@@ -152,17 +171,63 @@ fun OnboardingScreen() {
 @Composable
 private fun WelcomeStep() {
     val context = LocalContext.current
+    val accent = LocalAccentColor.current
     val version = remember {
         runCatching {
             context.packageManager.getPackageInfo(context.packageName, 0).versionName
         }.getOrNull()?.let { "v$it" } ?: "v1.1.0"
     }
-    StepTitle("FocusGuard $version")
+    StepTitle("Welcome to FocusGuard")
     Text(
-        "Fully offline · no ads · no account",
+        "FocusGuard $version",
         style = MaterialTheme.typography.titleSmall,
-        color = MaterialTheme.colorScheme.primary
+        color = MaterialTheme.colorScheme.onSurfaceVariant
     )
+    Spacer(Modifier.height(4.dp))
+
+    FgCard {
+        Column(Modifier.padding(20.dp)) {
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(accent.copy(alpha = 0.16f)),
+                contentAlignment = Alignment.Center
+            ) {
+                FgIcon(FgIcons.ChartBar, null, size = 28.dp, tint = accent)
+            }
+            Spacer(Modifier.height(14.dp))
+            Text(
+                "Take back your time",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                "See where your screen time goes, cap the apps that eat your day, " +
+                    "and hide the parts of apps that pull you in — all on your phone.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+
+    Spacer(Modifier.height(4.dp))
+    WelcomeBullet(FgIcons.WifiOff, "100% offline — no internet, no account, no ads")
+    WelcomeBullet(FgIcons.Shield, "Blocks apps, websites and in-app feeds")
+    WelcomeBullet(FgIcons.ChartBar, "Simple daily stats and trends, kept on-device")
+}
+
+@Composable
+private fun WelcomeBullet(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(
+        Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        FgIcon(icon, null, size = 20.dp, tint = LocalAccentColor.current)
+        Spacer(Modifier.size(12.dp))
+        Text(text, style = MaterialTheme.typography.bodyMedium)
+    }
 }
 
 @Composable

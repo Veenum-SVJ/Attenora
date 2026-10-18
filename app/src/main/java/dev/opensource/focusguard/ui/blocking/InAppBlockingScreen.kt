@@ -276,9 +276,8 @@ fun InAppBlockingScreen() {
                             OutlinedButton(enabled = serviceOn, onClick = {
                                 runCatching {
                                     context.startActivity(
-                                        context.packageManager.getLaunchIntentForPackage(
-                                            pkg.replace("com.google.android.youtube", "com.google.android.youtube")
-                                        ) ?: return@OutlinedButton
+                                        context.packageManager.getLaunchIntentForPackage(pkg)
+                                            ?: return@OutlinedButton
                                     )
                                 }
                             }) { Text("Test") }

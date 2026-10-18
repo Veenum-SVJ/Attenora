@@ -214,24 +214,22 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                             modifier = Modifier.fillMaxWidth()
                         ) { Text("End session") }
                     } else {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            listOf(
-                                "15m" to 15 * 60_000L,
-                                "30m" to 30 * 60_000L,
-                                "1h" to 60 * 60_000L,
-                                "Until midnight" to -1L
-                            ).forEach { (label, ms) ->
-                                OutlinedButton(
-                                    onClick = {
-                                        val until = if (ms < 0) {
-                                            LocalDate.now().plusDays(1)
-                                                .atStartOfDay(ZoneId.systemDefault())
-                                                .toInstant().toEpochMilli()
-                                        } else System.currentTimeMillis() + ms
-                                        scope.launch { FocusSession.start(container, until) }
-                                    },
-                                    modifier = Modifier.weight(1f)
-                                ) { Text(label, maxLines = 1) }
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                BlockNowPreset("15 min", 15 * 60_000L, Modifier.weight(1f)) {
+                                    scope.launch { FocusSession.start(container, it) }
+                                }
+                                BlockNowPreset("30 min", 30 * 60_000L, Modifier.weight(1f)) {
+                                    scope.launch { FocusSession.start(container, it) }
+                                }
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                BlockNowPreset("1 hour", 60 * 60_000L, Modifier.weight(1f)) {
+                                    scope.launch { FocusSession.start(container, it) }
+                                }
+                                BlockNowPreset("Until midnight", -1L, Modifier.weight(1f)) {
+                                    scope.launch { FocusSession.start(container, it) }
+                                }
                             }
                         }
                     }
@@ -717,6 +715,34 @@ private fun SimpleLimitRow(
         } else {
             Switch(checked = enabled, onCheckedChange = onToggle)
         }
+    }
+}
+
+@Composable
+private fun BlockNowPreset(
+    label: String,
+    durationMs: Long,
+    modifier: Modifier = Modifier,
+    onStart: (Long) -> Unit
+) {
+    OutlinedButton(
+        onClick = {
+            val until = if (durationMs < 0) {
+                LocalDate.now().plusDays(1)
+                    .atStartOfDay(ZoneId.systemDefault())
+                    .toInstant().toEpochMilli()
+            } else System.currentTimeMillis() + durationMs
+            onStart(until)
+        },
+        modifier = modifier,
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 10.dp)
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
