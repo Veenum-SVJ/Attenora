@@ -21,6 +21,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -58,17 +59,25 @@ class BlockOverlayActivity : ComponentActivity() {
         const val EXTRA_PACKAGE = "fg_pkg"
         const val EXTRA_REASON = "fg_reason"
         const val EXTRA_DOMAIN = "fg_domain"
+        const val EXTRA_UNTIL = "fg_until"
 
         const val REASON_LIMIT = "limit"
         const val REASON_SCHEDULE = "schedule"
         const val REASON_BLOCK_ALL = "blockall"
         const val REASON_WEBSITE = "website"
+        const val REASON_COOLDOWN = "cooldown"
 
         @Volatile
         var visible = false
             private set
 
-        fun launch(context: Context, pkg: String?, reason: String, domain: String? = null) {
+        fun launch(
+            context: Context,
+            pkg: String?,
+            reason: String,
+            domain: String? = null,
+            untilMs: Long = 0L
+        ) {
             val intent = Intent(context, BlockOverlayActivity::class.java)
                 .addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -78,20 +87,40 @@ class BlockOverlayActivity : ComponentActivity() {
                 .putExtra(EXTRA_PACKAGE, pkg)
                 .putExtra(EXTRA_REASON, reason)
                 .putExtra(EXTRA_DOMAIN, domain)
+                .putExtra(EXTRA_UNTIL, untilMs)
             context.startActivity(intent)
         }
+
+        private fun paramsOf(intent: Intent?) = Params(
+            pkg = intent?.getStringExtra(EXTRA_PACKAGE),
+            reason = intent?.getStringExtra(EXTRA_REASON) ?: REASON_LIMIT,
+            domain = intent?.getStringExtra(EXTRA_DOMAIN),
+            untilMs = intent?.getLongExtra(EXTRA_UNTIL, 0L) ?: 0L
+        )
     }
+
+    /** What the overlay is currently showing; replaced on every new intent. */
+    private data class Params(val pkg: String?, val reason: String, val domain: String?, val untilMs: Long)
+
+    private var params by mutableStateOf(Params(null, REASON_LIMIT, null, 0L))
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val pkg = intent.getStringExtra(EXTRA_PACKAGE)
-        val reason = intent.getStringExtra(EXTRA_REASON) ?: REASON_LIMIT
-        val domain = intent.getStringExtra(EXTRA_DOMAIN)
+        params = paramsOf(intent)
         setContent {
             FocusGuardTheme {
-                BlockContent(pkg = pkg, reason = reason, domain = domain)
+                val p = params
+                BlockContent(pkg = p.pkg, reason = p.reason, domain = p.domain, untilMs = p.untilMs)
             }
         }
+    }
+
+    // CLEAR_TOP reuses a live (paused) instance instead of creating one, so the
+    // new target/reason must be applied here or the overlay shows stale data.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        params = paramsOf(intent)
     }
 
     override fun onResume() {
@@ -106,7 +135,7 @@ class BlockOverlayActivity : ComponentActivity() {
 }
 
 @Composable
-private fun BlockContent(pkg: String?, reason: String, domain: String?) {
+private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs: Long) {
     val context = LocalContext.current
     val container = (context.applicationContext as FocusApp).container
     val label = remember(pkg) { pkg?.let { appLabel(context, it) } ?: "FocusGuard" }
@@ -115,17 +144,21 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?) {
         BlockOverlayActivity.REASON_WEBSITE -> "Site blocked"
         BlockOverlayActivity.REASON_BLOCK_ALL -> "Focus session"
         BlockOverlayActivity.REASON_SCHEDULE -> "Focus time"
+        BlockOverlayActivity.REASON_COOLDOWN -> "Session over"
         else -> "Daily limit reached"
     }
     val subtitle = when (reason) {
         BlockOverlayActivity.REASON_WEBSITE -> "$domain is on your blocklist."
         BlockOverlayActivity.REASON_BLOCK_ALL -> "You started a blocking session. Use the time for something better."
         BlockOverlayActivity.REASON_SCHEDULE -> "A focus schedule is active right now."
+        BlockOverlayActivity.REASON_COOLDOWN ->
+            "$label's session is used up. It's taking a break."
         else -> "$label has used up its allowed time for today."
     }
 
-    val unlockAt by produceState<Long?>(initialValue = null) {
-        value = when (reason) {
+    var unlockAt by remember(reason, untilMs) { mutableStateOf<Long?>(null) }
+    LaunchedEffect(reason, untilMs) {
+        unlockAt = if (untilMs > 0L) untilMs else when (reason) {
             BlockOverlayActivity.REASON_BLOCK_ALL -> container.enforcement.blockAllUntil.value
             BlockOverlayActivity.REASON_SCHEDULE ->
                 container.enforcement.activeScheduleAt(System.currentTimeMillis())

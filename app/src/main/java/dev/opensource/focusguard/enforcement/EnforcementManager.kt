@@ -53,12 +53,14 @@ class EnforcementManager(
      * blocked / remaining time / why. When [autoSession] is set, a SESSION
      * limit has no active grant yet — the caller starts it silently with the
      * limit's fixed length (no prompt; the "how many minutes?" dialog is gone).
+     * [availableAtMs] is set for the cooldown that follows a spent session.
      */
     data class Decision(
         val blocked: Boolean,
         val remainingMs: Long = Long.MAX_VALUE,
         val reason: String = "",
-        val autoSession: AutoSession? = null
+        val autoSession: AutoSession? = null,
+        val availableAtMs: Long = 0L
     )
 
     /** target to grant -> fixed session length in minutes. */
@@ -102,9 +104,9 @@ class EnforcementManager(
         scope.launch { evaluate(target) }
     }
 
-    suspend fun evaluate(pkg: String, now: Long = System.currentTimeMillis()) {
-        if (pkg == context.packageName) return
-        if (Allowlist.isAllowlisted(pkg)) return
+    suspend fun evaluate(pkg: String, now: Long = System.currentTimeMillis()): Decision {
+        if (pkg == context.packageName) return Decision(blocked = false)
+        if (Allowlist.isAllowlisted(pkg)) return Decision(blocked = false)
 
         if (now - lastReconcileAt > RECONCILE_THROTTLE_MS) {
             lastReconcileAt = now
@@ -114,13 +116,13 @@ class EnforcementManager(
         val decision = decisionFor(pkg, now)
 
         if (decision.blocked) {
-            if (BlockOverlayActivity.visible) return
-            if (now - lastOverlayAt < OVERLAY_THROTTLE_MS) return
+            if (BlockOverlayActivity.visible) return decision
+            if (now - lastOverlayAt < OVERLAY_THROTTLE_MS) return decision
             lastOverlayAt = now
             logBlock(pkg, decision.reason, now)
             Notifier.onBlockHit(context, pkg, decision.reason)
-            BlockOverlayActivity.launch(context, pkg, decision.reason)
-            return
+            BlockOverlayActivity.launch(context, pkg, decision.reason, untilMs = decision.availableAtMs)
+            return decision
         }
 
         // Variable session limit with no active grant → start the fixed-
@@ -135,6 +137,7 @@ class EnforcementManager(
         }
 
         maybeWarnFiveMinutes(pkg, decision.remainingMs, now)
+        return decision
     }
 
     /** Pure-ish decision for [pkg]; safe to call from the UI for countdowns. */
@@ -191,14 +194,29 @@ class EnforcementManager(
                 LimitType.SESSION -> {
                     val target = sessionTarget(limit, pkg)
                     val grantUntil = sessionGrants.value[target] ?: 0L
-                    if (LimitEngine.sessionGrantActive(grantUntil, now)) {
-                        // Count the live session toward "remaining" so the
-                        // 5-minute-left warning fires as the window closes.
-                        remaining = minOf(remaining, grantUntil - now)
-                    } else {
-                        // Fixed length stored in dailyLimitMs when the limit was made.
-                        val minutes = (limit.dailyLimitMs / 60_000L).toInt().coerceIn(1, 10_080)
-                        autoSession = AutoSession(target, minutes)
+                    when (LimitEngine.sessionAction(grantUntil, limit.cooldownMs, now)) {
+                        LimitEngine.SessionAction.ACTIVE -> {
+                            // Count the live session toward "remaining" so the
+                            // 5-minute-left warning fires as the window closes.
+                            remaining = minOf(remaining, grantUntil - now)
+                        }
+                        LimitEngine.SessionAction.COOLDOWN -> {
+                            // Session spent: stay blocked until the cooldown
+                            // elapses (or, with no cooldown configured, until
+                            // the day rolls over), then a fresh session opens.
+                            val end = LimitEngine.cooldownEnd(grantUntil, limit.cooldownMs)
+                                .takeIf { it > now } ?: LimitEngine.dayEndMillis(now)
+                            return Decision(
+                                blocked = true,
+                                remainingMs = (end - now).coerceAtLeast(0L),
+                                reason = BlockOverlayActivity.REASON_COOLDOWN,
+                                availableAtMs = end
+                            )
+                        }
+                        LimitEngine.SessionAction.GRANT -> {
+                            // Grant the fixed length stored when the limit was made.
+                            autoSession = AutoSession(target, sessionMinutes(limit))
+                        }
                     }
                 }
             }
@@ -229,6 +247,10 @@ class EnforcementManager(
 
     private fun sessionTarget(limit: UsageLimit, pkg: String): String =
         if (limit.targetKind == TargetKind.CATEGORY || limit.targetKind == TargetKind.ALL) pkg else limit.targetId
+
+    /** Fixed session length for [limit], stored in minutes in dailyLimitMs. */
+    private fun sessionMinutes(limit: UsageLimit): Int =
+        (limit.dailyLimitMs / 60_000L).toInt().coerceIn(1, 10_080)
 
     private suspend fun usedForLimit(limit: UsageLimit, pkg: String, now: Long): Long = when (limit.targetKind) {
         TargetKind.CATEGORY -> {

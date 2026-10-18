@@ -72,6 +72,45 @@ object LimitEngine {
     fun sessionGrantActive(untilMs: Long, now: Long): Boolean = untilMs > now
 
     /**
+     * True while a spent session window is cooling down: once a variable-session
+     * window ends at [grantUntil], the target stays blocked for [cooldownMs]
+     * before a new window may start. A [grantUntil] of 0 means no window has run
+     * yet, so there is nothing to cool down from.
+     */
+    fun sessionCoolingDown(grantUntil: Long, cooldownMs: Long, now: Long): Boolean =
+        grantUntil > 0L && grantUntil <= now && cooldownMs > 0L && now < grantUntil + cooldownMs
+
+    /** When the post-session cooldown ends (0 when no cooldown applies). */
+    fun cooldownEnd(grantUntil: Long, cooldownMs: Long): Long =
+        if (grantUntil > 0L && cooldownMs > 0L) grantUntil + cooldownMs else 0L
+
+    /** What a fixed-session limit should do for the current instant. */
+    enum class SessionAction { ACTIVE, COOLDOWN, GRANT }
+
+    /**
+     * Ordering matters here: an active window wins, then a configured cooldown
+     * that is still running, then — when no cooldown is configured at all — the
+     * block holds until the day rolls over, and only otherwise does a fresh
+     * fixed session get granted. Getting this order wrong once made every
+     * app stay blocked until midnight after its cooldown had already elapsed.
+     */
+    fun sessionAction(grantUntil: Long, cooldownMs: Long, now: Long): SessionAction = when {
+        sessionGrantActive(grantUntil, now) -> SessionAction.ACTIVE
+        sessionCoolingDown(grantUntil, cooldownMs, now) -> SessionAction.COOLDOWN
+        grantUntil > 0L && cooldownMs <= 0L -> SessionAction.COOLDOWN
+        else -> SessionAction.GRANT
+    }
+
+    /**
+     * Fallback deadline for a spent session whose limit has no cooldown set:
+     * the target stays blocked until the next local midnight, so a session
+     * limit can never quietly degrade into an unlimited one.
+     */
+    fun dayEndMillis(now: Long, zone: ZoneId = ZoneId.systemDefault()): Long =
+        Instant.ofEpochMilli(now).atZone(zone).toLocalDate().plusDays(1)
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+
+    /**
      * Minutes offered by a variable-session limit ("15,30,60,1440"), parsed
      * defensively; falls back to the standard preset on garbage input.
      */

@@ -81,6 +81,8 @@ fun AddLimitScreen(onBack: () -> Unit) {
     var daysMask by remember { mutableStateOf(0x7F) }
     /** SESSION only: fixed length granted each time the app is opened. */
     var sessionMinutes by remember { mutableStateOf("30") }
+    /** SESSION only: block length after a session runs out before reopening. */
+    var cooldownMinutes by remember { mutableStateOf("30") }
     var name by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var saved by remember { mutableStateOf(false) }
@@ -163,7 +165,7 @@ fun AddLimitScreen(onBack: () -> Unit) {
             )
         }
 
-        TypeRow("Enable variable session limit", type == LimitType.SESSION) { type = LimitType.SESSION }
+        TypeRow("Set a fixed session limit", type == LimitType.SESSION) { type = LimitType.SESSION }
         if (type == LimitType.SESSION) {
             OutlinedTextField(
                 value = sessionMinutes,
@@ -171,6 +173,19 @@ fun AddLimitScreen(onBack: () -> Unit) {
                 label = { Text("Session length (minutes per open)") },
                 supportingText = {
                     Text("Fixed — no prompt appears when you open the app.")
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+            OutlinedTextField(
+                value = cooldownMinutes,
+                onValueChange = { cooldownMinutes = it.filter(Char::isDigit).take(4) },
+                label = { Text("Cooldown (minutes)") },
+                supportingText = {
+                    Text("Once the session is used up, the app stays blocked this long before it can be opened again.")
                 },
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -227,6 +242,8 @@ fun AddLimitScreen(onBack: () -> Unit) {
                             "Enter a daily limit in minutes."
                         t == LimitType.SESSION && sessionMinutes.toIntOrNull()?.let { it <= 0 } != false ->
                             "Enter the session length in minutes."
+                        t == LimitType.SESSION && cooldownMinutes.toIntOrNull()?.let { it <= 0 } != false ->
+                            "Enter a cooldown in minutes (at least 1)."
                         t != LimitType.SCHEDULE && targets.any { it.kind == TargetKind.ALL } ->
                             "\"Everything\" only works with Block on a schedule."
                         else -> null
@@ -258,6 +275,9 @@ fun AddLimitScreen(onBack: () -> Unit) {
                                                     (if (t == LimitType.SESSION) sessionMinutes.toLongOrNull()
                                                         else dailyMinutes.toLongOrNull()) ?: 30L
                                                     ) * 60_000L,
+                                                cooldownMs = if (t == LimitType.SESSION)
+                                                    (cooldownMinutes.toLongOrNull() ?: 30L) * 60_000L
+                                                else 0L,
                                                 sessionChoices = (sessionMinutes.toIntOrNull() ?: 30).toString(),
                                                 daysMask = daysMask,
                                                 startMinute = startMinute,

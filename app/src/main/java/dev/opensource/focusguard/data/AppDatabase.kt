@@ -63,6 +63,8 @@ data class UsageLimit(
     val dailyLimitMs: Long = 0L,
     /** SESSION only: comma-separated minutes, e.g. "15,30,60,1440". */
     val sessionChoices: String = "",
+    /** SESSION only: cooldown after each spent session window, in ms (0 = none). */
+    val cooldownMs: Long = 0L,
     /** Bit 0 = Monday … bit 6 = Sunday; 127 = every day. */
     val daysMask: Int = 0x7F,
     /** SCHEDULE only: minutes after midnight; end < start means overnight. */
@@ -484,7 +486,7 @@ interface MetaDao {
         HiddenItem::class, ElementRule::class, ElementUsage::class, SessionGrant::class,
         BlockEvent::class, MetaEntry::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

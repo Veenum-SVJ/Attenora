@@ -273,7 +273,7 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
 
         item {
             SectionBox(
-                title = "Variable Session Limits",
+                title = "Session Limits",
                 count = session.size,
                 expanded = sSession,
                 onToggle = { sSession = !sSession }
@@ -292,7 +292,7 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                                     formatClock(java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).hour * 60 +
                                         java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).minute)
                                 }" else null
-                            } ?: "${(limit.dailyLimitMs / 60_000L).toInt()} min per open — starts automatically",
+                            } ?: sessionSummary(limit),
                             enabled = limit.enabled,
                             editMode = editMode,
                             onToggle = { on ->
@@ -508,6 +508,14 @@ private fun targetIcon(kind: String) = when (kind) {
     TargetKind.WEBSITE -> FgIcons.Globe
     TargetKind.CATEGORY -> FgIcons.Shapes
     else -> FgIcons.Shield
+}
+
+/** "20 min per open · 30 min cooldown" for a session limit row. */
+private fun sessionSummary(limit: UsageLimit): String {
+    val minutes = (limit.dailyLimitMs / 60_000L).toInt()
+    val cooldown = (limit.cooldownMs / 60_000L).toInt()
+    return if (cooldown > 0) "$minutes min per open · $cooldown min cooldown"
+    else "$minutes min per open · blocked once spent"
 }
 
 /** One bordered rectangle per section: header toggles the whole box. */

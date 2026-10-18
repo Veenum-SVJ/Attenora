@@ -44,6 +44,7 @@ class BackupRepository(private val db: AppDatabase) {
                 put(JSONObject()
                     .put("id", l.id).put("type", l.type).put("kind", l.targetKind)
                     .put("target", l.targetId).put("limitMs", l.dailyLimitMs)
+                    .put("cooldownMs", l.cooldownMs)
                     .put("choices", l.sessionChoices).put("days", l.daysMask)
                     .put("start", l.startMinute).put("end", l.endMinute)
                     .put("name", l.name).put("enabled", l.enabled).put("order", l.sortOrder))
@@ -123,6 +124,7 @@ class BackupRepository(private val db: AppDatabase) {
                         id = o.optLong("id"),
                         type = o.getString("type"), targetKind = o.getString("kind"),
                         targetId = o.optString("target"), dailyLimitMs = o.optLong("limitMs"),
+                        cooldownMs = o.optLong("cooldownMs"),
                         sessionChoices = o.optString("choices"), daysMask = o.optInt("days", 0x7F),
                         startMinute = o.optInt("start"), endMinute = o.optInt("end", 1440),
                         name = o.optString("name"), enabled = o.optBoolean("enabled", true),

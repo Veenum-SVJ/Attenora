@@ -58,6 +58,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     private val screenOffReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             restoreIfOurs() // never leave the display stuck monochrome behind a locked screen
+            stopLimitWatch() // nothing is foreground while the screen is off
         }
     }
 
@@ -87,6 +88,48 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         }
     }
 
+    // --- limit watch state
+    // Re-checks the foreground app's remaining time so a limit/session that
+    // runs out while the app stays open still blocks. One delayed wakeup at a
+    // time (never a poll loop); bounded by MAX_WATCH_DELAY_MS.
+    private var watchPkg: String? = null
+
+    private val limitWatcher: Runnable = Runnable {
+        val pkg = watchPkg ?: return@Runnable
+        container.scope.launch {
+            val decision = runCatching { container.enforcement.evaluate(pkg) }.getOrNull()
+                ?: return@launch
+            mainHandler.post {
+                if (watchPkg != pkg) return@post
+                if (decision.blocked) {
+                    stopLimitWatch()
+                } else {
+                    val remaining = remainingFor(decision)
+                    if (remaining == Long.MAX_VALUE || remaining <= 0L) stopLimitWatch()
+                    else scheduleLimitWatch(remaining)
+                }
+            }
+        }
+    }
+
+    private fun startLimitWatch(pkg: String) {
+        stopLimitWatch()
+        if (pkg == packageName || Allowlist.isAllowlisted(pkg)) return
+        watchPkg = pkg
+        scheduleLimitWatch(0L)
+    }
+
+    private fun scheduleLimitWatch(remainingMs: Long) {
+        val delay = (remainingMs + 300L).coerceIn(1_000L, MAX_WATCH_DELAY_MS)
+        mainHandler.removeCallbacks(limitWatcher)
+        mainHandler.postDelayed(limitWatcher, delay)
+    }
+
+    private fun stopLimitWatch() {
+        watchPkg = null
+        mainHandler.removeCallbacks(limitWatcher)
+    }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         container.a11yConnected = true
@@ -112,6 +155,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             container.enforcement.onForeground(it)
             updateCountdown(it)
             applyGrayscale(it)
+            startLimitWatch(it)
         }
     }
 
@@ -129,6 +173,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 resetAttribution()
                 runDetection(pkg)
                 if (pkg in BROWSERS) checkWebsite(e, pkg)
+                startLimitWatch(pkg)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 if (enabledRules.value[pkg] != null || enabledRules.value[canonical(pkg)] != null) {
@@ -493,6 +538,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         rulesJob?.cancel()
         runCatching { unregisterReceiver(screenOffReceiver) }
         restoreIfOurs()
+        stopLimitWatch()
         mainHandler.removeCallbacksAndMessages(null)
         hideCover()
         hidePill()
@@ -520,6 +566,9 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         private const val DETECT_THROTTLE_MS = 400L
         private const val BACK_COOLDOWN_MS = 2_000L
         private const val FULLSCREEN_RATIO = 0.55
+
+        /** Upper bound between limit re-checks while an app stays foreground. */
+        private const val MAX_WATCH_DELAY_MS = 4 * 60_000L
 
         val BROWSERS = setOf(
             "com.android.chrome",

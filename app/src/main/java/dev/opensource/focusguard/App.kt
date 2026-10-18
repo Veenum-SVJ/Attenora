@@ -3,6 +3,8 @@ package dev.opensource.focusguard
 import android.app.Application
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.opensource.focusguard.data.AppDatabase
 import dev.opensource.focusguard.data.BackupRepository
 import dev.opensource.focusguard.data.Category
@@ -23,6 +25,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+
+/**
+ * v2 → v3: variable-session limits gained a per-limit cooldown. Adding the
+ * column in place keeps the user's usage history instead of wiping the DB.
+ */
+private val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE usage_limits ADD COLUMN cooldownMs INTEGER NOT NULL DEFAULT 0")
+    }
+}
 
 class FocusApp : Application() {
     lateinit var container: AppContainer
@@ -45,6 +57,7 @@ class AppContainer(val app: Context) {
     private val containerInitT0 = android.os.SystemClock.elapsedRealtime()
 
     val db: AppDatabase = Room.databaseBuilder(app, AppDatabase::class.java, "focusguard.db")
+        .addMigrations(MIGRATION_2_3)
         .fallbackToDestructiveMigration()
         .build()
 

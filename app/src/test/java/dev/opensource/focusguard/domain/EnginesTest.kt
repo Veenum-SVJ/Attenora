@@ -193,6 +193,59 @@ class TypedLimitEngineTest {
         assertEquals(listOf(15, 30, 60, 1440), LimitEngine.parseSessionChoices("0,9999,abc"))
         assertEquals(listOf(15, 30, 60, 1440), LimitEngine.parseSessionChoices(""))
     }
+
+    @Test
+    fun `a spent session cools down for exactly the configured window`() {
+        val until = 10_000L
+        val cooldown = 60_000L
+        // Still inside the granted window: not cooling down.
+        assertFalse(LimitEngine.sessionCoolingDown(until, cooldown, now = 9_999))
+        // Window just ended: cooling down for the whole cooldown.
+        assertTrue(LimitEngine.sessionCoolingDown(until, cooldown, now = 10_000))
+        assertTrue(LimitEngine.sessionCoolingDown(until, cooldown, now = 69_999))
+        // Cooldown over: a fresh session may start.
+        assertFalse(LimitEngine.sessionCoolingDown(until, cooldown, now = 70_000))
+        assertEquals(70_000L, LimitEngine.cooldownEnd(until, cooldown))
+    }
+
+    @Test
+    fun `a session that never ran or has no cooldown never cools down`() {
+        assertFalse(LimitEngine.sessionCoolingDown(grantUntil = 0L, cooldownMs = 60_000L, now = 5_000))
+        assertFalse(LimitEngine.sessionCoolingDown(grantUntil = 1L, cooldownMs = 0L, now = 5_000))
+        assertEquals(0L, LimitEngine.cooldownEnd(grantUntil = 0L, cooldownMs = 60_000L))
+        assertEquals(0L, LimitEngine.cooldownEnd(grantUntil = 1L, cooldownMs = 0L))
+    }
+
+    @Test
+    fun `session action grants again once the cooldown has elapsed`() {
+        val until = 10_000L
+        val cooldown = 60_000L
+        assertEquals(LimitEngine.SessionAction.ACTIVE, LimitEngine.sessionAction(until, cooldown, now = 5_000))
+        assertEquals(LimitEngine.SessionAction.COOLDOWN, LimitEngine.sessionAction(until, cooldown, now = 30_000))
+        // The regression: after the cooldown the block must lift, not extend to midnight.
+        assertEquals(LimitEngine.SessionAction.GRANT, LimitEngine.sessionAction(until, cooldown, now = 70_000))
+    }
+
+    @Test
+    fun `session action with no cooldown holds the block and still opens a fresh day`() {
+        // Never granted yet → grant the fixed session.
+        assertEquals(LimitEngine.SessionAction.GRANT, LimitEngine.sessionAction(0L, 0L, now = 1_000))
+        // Spent, no cooldown configured → hold the block (day-long fallback).
+        assertEquals(LimitEngine.SessionAction.COOLDOWN, LimitEngine.sessionAction(10_000L, 0L, now = 5_000_000))
+    }
+
+    @Test
+    fun `the no-cooldown fallback deadline is the next local midnight`() {
+        val zone = ZoneId.of("UTC")
+        val now = LocalDate.of(2026, 10, 18).atTime(22, 30)
+            .atZone(zone).toInstant().toEpochMilli()
+        val end = LimitEngine.dayEndMillis(now, zone)
+        assertEquals(
+            LocalDate.of(2026, 10, 19).atStartOfDay(zone).toInstant().toEpochMilli(),
+            end
+        )
+        assertTrue(end > now)
+    }
 }
 
 class ResetEngineTest {
