@@ -95,12 +95,13 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
     var statuses by remember { mutableStateOf<Map<Long, LimitStatus>>(emptyMap()) }
     var editingMinutes by remember { mutableStateOf<UsageLimit?>(null) }
 
-    // Each section lives in its own bordered box, collapsed on entry —
-    // leaving the tab and coming back collapses them again.
-    var sDaily by remember { mutableStateOf(false) }
-    var sSession by remember { mutableStateOf(false) }
-    var sSchedule by remember { mutableStateOf(false) }
-    var sPermanent by remember { mutableStateOf(false) }
+    // Each section lives in its own bordered box. Expanded/collapsed state is
+    // saved so switching tabs and coming back keeps the section open instead
+    // of silently collapsing it (previously plain `remember` — reset on nav).
+    var sDaily by rememberSaveable { mutableStateOf(false) }
+    var sSession by rememberSaveable { mutableStateOf(false) }
+    var sSchedule by rememberSaveable { mutableStateOf(false) }
+    var sPermanent by rememberSaveable { mutableStateOf(false) }
     var editMode by rememberSaveable { mutableStateOf(false) }
     var fabExpanded by rememberSaveable { mutableStateOf(false) }
 

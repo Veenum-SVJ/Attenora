@@ -20,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DateRangePicker
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -68,10 +70,18 @@ private enum class Period(val chip: String) {
     TODAY("Today"), YESTERDAY("Yesterday"), D7("7d"), D14("14d"), D28("28d"), CUSTOM("Custom")
 }
 
+/** Which metric the app list is ranked by (Stayfree "Usage Metrics"). */
+private enum class Metric(val label: String) {
+    TIME("Usage time"), OPENS("Opens")
+}
+
 /** Resolved inclusive display range. */
 private data class Range(val from: LocalDate, val to: LocalDate) {
     val single: Boolean get() = from == to
 }
+
+/** One app rolled up across every day in the selected range. */
+private data class AppStat(val pkg: String, val ms: Long, val launches: Int)
 
 @Composable
 fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
@@ -85,6 +95,9 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     var customToKey by rememberSaveable { mutableStateOf("") }
     var showPicker by remember { mutableStateOf(false) }
     var chartStyle by rememberSaveable { mutableStateOf(ChartStyle.BAR) }
+    var metric by rememberSaveable { mutableStateOf(Metric.TIME) }
+    var sortDesc by rememberSaveable { mutableStateOf(true) }
+    var metricMenu by remember { mutableStateOf(false) }
     val dismissedTips = remember { androidx.compose.runtime.mutableStateListOf<String>() }
 
     val mondayFirst by container.settings.weekMondayFirst.collectAsState(initial = true)
@@ -169,6 +182,22 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     }
 
     val displayTotal = remember(visibleRows) { visibleRows.sumOf { it.usedMs } }
+
+    // Roll every per-day row up into one row per app. Multi-day ranges return
+    // one row per (day, app) — without this rollup the list handed LazyColumn
+    // duplicate keys and only a single stale day's row rendered.
+    val appStats = remember(visibleRows) {
+        visibleRows.groupBy { it.packageName }.map { (pkg, rs) ->
+            AppStat(pkg, rs.sumOf { it.usedMs }, rs.sumOf { it.launches })
+        }
+    }
+    val metricTotal = remember(appStats, metric) {
+        appStats.sumOf { if (metric == Metric.TIME) it.ms else it.launches.toLong() }
+    }
+    val orderedStats = remember(appStats, metric, sortDesc) {
+        val byValue = compareBy<AppStat> { if (metric == Metric.TIME) it.ms else it.launches.toLong() }
+        if (sortDesc) appStats.sortedWith(byValue.reversed()) else appStats.sortedWith(byValue)
+    }
 
     // Chart bars.
     val chartBars = remember(range, hourly, rows) {
@@ -443,14 +472,94 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
             }
         }
 
-        // App rows.
-        val sorted = visibleRows.sortedByDescending { it.usedMs }
-        items(sorted, key = { it.packageName }) { row ->
+        // App list — ranked by the selected metric (usage time or opens).
+        item {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(start = 20.dp, end = 14.dp, top = 16.dp, bottom = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Most used apps",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        "${orderedStats.size} apps · by ${metric.label.lowercase()}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Box {
+                    Row(
+                        Modifier
+                            .clip(RoundedCornerShape(50))
+                            .background(MaterialTheme.colorScheme.surface)
+                            .clickable { metricMenu = true }
+                            .padding(start = 12.dp, end = 8.dp, top = 7.dp, bottom = 7.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            metric.label,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        FgIcon(FgIcons.ChevronDown, "Change metric", size = 16.dp)
+                    }
+                    DropdownMenu(
+                        expanded = metricMenu,
+                        onDismissRequest = { metricMenu = false }
+                    ) {
+                        Metric.values().forEach { m ->
+                            DropdownMenuItem(
+                                text = { Text(m.label) },
+                                trailingIcon = if (m == metric) {
+                                    { FgIcon(FgIcons.Check, null, size = 16.dp) }
+                                } else null,
+                                onClick = {
+                                    metric = m
+                                    metricMenu = false
+                                }
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier
+                        .size(34.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(MaterialTheme.colorScheme.surface)
+                        .clickable { sortDesc = !sortDesc },
+                    contentAlignment = Alignment.Center
+                ) {
+                    FgIcon(
+                        if (sortDesc) FgIcons.ChevronDown else FgIcons.ChevronUp,
+                        if (sortDesc) "Sorted high to low" else "Sorted low to high",
+                        size = 18.dp
+                    )
+                }
+            }
+        }
+
+        items(orderedStats, key = { it.pkg }) { stat ->
             AppUsageRow(
-                pkg = row.packageName,
-                ms = row.usedMs + (if (isToday) container.usage.liveMs(row.packageName) else 0L),
-                share = if (displayTotal > 0) row.usedMs.toFloat() / displayTotal else 0f,
-                onClick = { onOpenApp(row.packageName) }
+                pkg = stat.pkg,
+                primary = when (metric) {
+                    Metric.TIME -> {
+                        val ms = stat.ms + (if (isToday) container.usage.liveMs(stat.pkg) else 0L)
+                        if (ms <= 0) "Less than 1 min" else formatDuration(ms)
+                    }
+                    Metric.OPENS -> if (stat.launches <= 0) "No opens" else "${stat.launches} opens"
+                },
+                share = if (metricTotal > 0) {
+                    (if (metric == Metric.TIME) stat.ms else stat.launches.toLong()).toFloat() / metricTotal
+                } else 0f,
+                onClick = { onOpenApp(stat.pkg) }
             )
         }
 
@@ -482,7 +591,7 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                         FgIcon(FgIcons.Lightbulb, null, size = 20.dp)
                         Spacer(Modifier.width(12.dp))
                         Text(
-                            text.replace("App name", appLabel(context, sorted.firstOrNull()?.packageName ?: "")),
+                            text.replace("App name", appLabel(context, orderedStats.firstOrNull()?.pkg ?: "")),
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.weight(1f)
                         )
@@ -599,7 +708,7 @@ private fun LegendDot(color: androidx.compose.ui.graphics.Color, label: String) 
 
 
 @Composable
-private fun AppUsageRow(pkg: String, ms: Long, share: Float, onClick: () -> Unit) {
+private fun AppUsageRow(pkg: String, primary: String, share: Float, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -637,7 +746,7 @@ private fun AppUsageRow(pkg: String, ms: Long, share: Float, onClick: () -> Unit
         Spacer(Modifier.width(12.dp))
         Column(horizontalAlignment = Alignment.End) {
             Text(
-                if (ms <= 0) "Less than 1 min" else formatDuration(ms),
+                primary,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold
             )
