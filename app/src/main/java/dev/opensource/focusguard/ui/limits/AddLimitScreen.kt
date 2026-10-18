@@ -49,6 +49,7 @@ import dev.opensource.focusguard.data.FocusSchedule
 import dev.opensource.focusguard.data.LimitType
 import dev.opensource.focusguard.data.TargetKind
 import dev.opensource.focusguard.data.UsageLimit
+import dev.opensource.focusguard.domain.Allowlist
 import dev.opensource.focusguard.domain.UrlMatcher
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgIcon
@@ -452,7 +453,10 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
         val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
         runCatching {
             pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }.distinct()
-                .filterNot { it == context.packageName }
+                // Skip ourselves and the allowlist: enforcement bails out for
+                // those packages, so a target on them would be a dead limit
+                // that silently never fires (found on emulator, 2026-10-18).
+                .filterNot { it == context.packageName || Allowlist.isAllowlisted(it) }
         }.getOrDefault(emptyList())
     }
 

@@ -91,6 +91,11 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     val hiddenKeys by container.hiddenKeys.collectAsState()
 
     // Reconcile once when the screen appears (checkpointed delta — cheap).
+    // The rows below are read by a separate one-shot query, so bump a tick
+    // once reconcile has written its rollups — otherwise the first frame can
+    // win the race and keep showing the empty state even though the day's
+    // rows are already in the database (reproduced on emulator, 2026-10-18).
+    var refreshTick by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
         val t0 = android.os.SystemClock.elapsedRealtime()
         runCatching { container.usage.reconcileNow() }
@@ -98,6 +103,7 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
             "FGSTART",
             "reconcile: ${android.os.SystemClock.elapsedRealtime() - t0}ms"
         )
+        refreshTick++
     }
 
     val todayDate = remember(period, step) { LocalDate.parse(container.usage.todayKey()) }
@@ -131,7 +137,7 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     var hourRows by remember { mutableStateOf<List<dev.opensource.focusguard.data.HourlyUsage>>(emptyList()) }
     var webTotal by remember { mutableStateOf(0L) }
 
-    LaunchedEffect(range) {
+    LaunchedEffect(range, refreshTick) {
         val t0 = android.os.SystemClock.elapsedRealtime()
         val fromKey = range.from.toString()
         val toKey = range.to.toString()

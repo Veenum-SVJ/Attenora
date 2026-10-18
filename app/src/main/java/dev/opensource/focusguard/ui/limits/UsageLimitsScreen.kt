@@ -285,6 +285,8 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                     session.forEach { limit ->
                         SimpleLimitRow(
                             icon = FgIcons.Stopwatch,
+                            targetKind = limit.targetKind,
+                            targetId = limit.targetId,
                             title = targetLabel(limit.targetKind, limit.targetId, context),
                             subtitle = grants[limit.targetId]?.let { until ->
                                 if (until > System.currentTimeMillis()) "Session until ${
@@ -323,6 +325,8 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                     typedSchedules.forEach { limit ->
                         SimpleLimitRow(
                             icon = FgIcons.Clock,
+                            targetKind = limit.targetKind,
+                            targetId = limit.targetId,
                             title = limit.name.ifBlank {
                                 targetLabel(limit.targetKind, limit.targetId, context)
                             },
@@ -382,6 +386,8 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                     permanent.forEach { limit ->
                         SimpleLimitRow(
                             icon = FgIcons.Block,
+                            targetKind = limit.targetKind,
+                            targetId = limit.targetId,
                             title = targetLabel(limit.targetKind, limit.targetId, context),
                             subtitle = "Blocked at all times",
                             enabled = limit.enabled,
@@ -664,6 +670,8 @@ private fun SimpleLimitRow(
     subtitle: String,
     enabled: Boolean,
     editMode: Boolean,
+    targetKind: String? = null,
+    targetId: String? = null,
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
@@ -673,13 +681,17 @@ private fun SimpleLimitRow(
             .padding(horizontal = 20.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            Modifier
-                .size(42.dp)
-                .clip(RoundedCornerShape(12.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
-            contentAlignment = Alignment.Center
-        ) { FgIcon(icon, null, size = 22.dp) }
+        if (targetKind == TargetKind.APP && targetId != null) {
+            AppIcon(targetId, size = 42.dp)
+        } else {
+            Box(
+                Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center
+            ) { FgIcon(icon, null, size = 22.dp) }
+        }
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(

@@ -148,12 +148,22 @@ fun AppIcon(packageName: String, size: Dp = 36.dp, modifier: Modifier = Modifier
             modifier = modifier.size(size).clip(shape)
         )
     } else {
+        // Icon lookup failed (rare: broken/removed package) — show the app's
+        // initial rather than a blank gray tile.
         Box(
             modifier
                 .size(size)
                 .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
-        )
+                .background(MaterialTheme.colorScheme.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                appLabel(context, packageName).take(1).uppercase(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 

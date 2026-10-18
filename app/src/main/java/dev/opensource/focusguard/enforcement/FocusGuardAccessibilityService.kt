@@ -73,7 +73,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             if (!pillShown) return
             container.scope.launch {
                 val decision = container.enforcement.decisionFor(pkg)
-                val remaining = decision.remainingMs
+                val remaining = remainingFor(decision)
                 mainHandler.post {
                     if (!pillShown || pillPkg != pkg) return@post
                     if (decision.blocked || remaining == Long.MAX_VALUE || remaining <= 0L) {
@@ -100,7 +100,16 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         runCatching {
             registerReceiver(screenOffReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
         }
-        lastForeground?.let {
+        // If the service bound after the last window event (e.g. enabled
+        // mid-session from Settings), lastForeground is still null — ask the
+        // window manager what's on screen right now so evaluate/grant/pill
+        // don't all wait for the next app switch (emulator repro, 2026-10-18).
+        val current = runCatching { rootInActiveWindow?.packageName?.toString() }
+            .getOrNull()
+            ?.takeIf { it != packageName }
+            ?: lastForeground
+        current?.let {
+            container.enforcement.onForeground(it)
             updateCountdown(it)
             applyGrayscale(it)
         }
@@ -228,6 +237,20 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     private fun rulesFor(pkg: String): Set<String> =
         enabledRules.value[pkg] ?: enabledRules.value[canonical(pkg)] ?: emptySet()
 
+    /**
+     * Remaining ms to display for [decision]. A pending auto-session (the
+     * grant row isn't committed yet — decisionFor can read before evaluate()'s
+     * upsert lands) counts as the full fixed session, so the pill shows on the
+     * very first open instead of hiding behind `remaining == MAX_VALUE`. The
+     * 250 ms ticker re-reads and switches to the committed grant's real value.
+     */
+    private fun remainingFor(decision: EnforcementManager.Decision): Long {
+        if (decision.blocked) return 0L
+        if (decision.remainingMs != Long.MAX_VALUE) return decision.remainingMs
+        val auto = decision.autoSession ?: return Long.MAX_VALUE
+        return auto.minutes * 60_000L
+    }
+
     private fun updateCountdown(pkg: String) {
         container.scope.launch {
             val wantCountdown = container.settings.countdownOn.first()
@@ -236,11 +259,12 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 return@launch
             }
             val decision = container.enforcement.decisionFor(pkg)
+            val remaining = remainingFor(decision)
             mainHandler.post {
-                if (decision.blocked || decision.remainingMs == Long.MAX_VALUE || decision.remainingMs <= 0L) {
+                if (decision.blocked || remaining == Long.MAX_VALUE || remaining <= 0L) {
                     hidePill()
                 } else {
-                    showPill(pkg, decision.remainingMs)
+                    showPill(pkg, remaining)
                 }
             }
         }
