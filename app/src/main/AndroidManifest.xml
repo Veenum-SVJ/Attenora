@@ -11,6 +11,10 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Grayscale filter: granted once via `adb shell pm grant …` (Settings → Grayscale). -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
 
@@ -29,12 +33,76 @@
         <activity
             android:name=".ui.MainActivity"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask" />
+
+        <!-- Launcher icon variants: exactly one alias enabled at a time. -->
+        <activity-alias
+            android:name=".ui.LauncherDefault"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher_round"
+            android:targetActivity=".ui.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.LauncherMint"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_1"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.LauncherRose"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_2"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.LauncherAmber"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_3"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.LauncherSky"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_4"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".ui.LauncherMono"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@mipmap/ic_launcher_5"
+            android:targetActivity=".ui.MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
 
         <activity
             android:name=".ui.blocking.BlockOverlayActivity"
@@ -46,43 +114,16 @@
             android:theme="@style/Theme.FocusGuard.Block" />
 
         <service
-            android:name=".enforcement.AppMonitorService"
+            android:name=".enforcement.FocusGuardAccessibilityService"
             android:exported="true"
-            android:label="@string/a11y_monitor_label"
+            android:label="@string/a11y_focusguard_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
                 android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_app_monitor" />
-        </service>
-
-        <service
-            android:name=".enforcement.WebBlockService"
-            android:exported="true"
-            android:label="@string/a11y_web_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_web_block" />
-        </service>
-
-        <!-- Optional: in-app element blocking + floating countdown overlay. -->
-        <service
-            android:name=".enforcement.ElementBlockService"
-            android:exported="true"
-            android:label="@string/a11y_element_label"
-            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
-            <intent-filter>
-                <action android:name="android.accessibilityservice.AccessibilityService" />
-            </intent-filter>
-            <meta-data
-                android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_element_block" />
+                android:resource="@xml/accessibility_focusguard" />
         </service>
 
         <!-- Optional: mutes notifications from currently blocked apps. -->
@@ -95,15 +136,6 @@
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
         </service>
-
-        <!-- Variable-session "how long?" prompt. -->
-        <activity
-            android:name=".enforcement.SessionPromptActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:noHistory="true"
-            android:taskAffinity=""
-            android:theme="@style/Theme.FocusGuard.Block" />
 
         <receiver
             android:name=".enforcement.ScheduleAlarmReceiver"

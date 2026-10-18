@@ -14,49 +14,55 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.TextView
 import dev.opensource.focusguard.FocusApp
-import dev.opensource.focusguard.domain.ResetEngine
+import dev.opensource.focusguard.domain.Allowlist
+import dev.opensource.focusguard.domain.UrlMatcher
 import dev.opensource.focusguard.ui.common.formatDuration
+import dev.opensource.focusguard.util.Grayscale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
 
 /**
- * The third (optional) accessibility service: in-app element blocking plus the
- * floating usage-countdown overlay.
+ * The single accessibility service. Replaces the former three services so the
+ * user enables FocusGuard exactly once in system accessibility settings.
  *
- * Battery rules: no timers while nothing is visible, hard node caps, per-event
- * throttles, and a cheap package map lookup before any traversal — events from
- * apps without enabled element rules are ignored immediately.
+ * It always reports foreground app changes (screen-time accounting + blocking).
+ * When a browser is foreground it additionally reads only the address bar to
+ * enforce website blocking and daily limits. When an app has enabled in-app
+ * element rules it hides matched elements and shows the countdown pill.
  *
- * "Smart hide + auto-close": covered elements are visually replaced by an
- * overlay window; fullscreen surfaces are left with a Back gesture. Android
- * gives no API to actually delete another app's view.
+ * Payloads stay cheap: package-map lookups before traversal, hard node caps,
+ * and per-event throttles. No other app's content is ever read.
  */
-class ElementBlockService : AccessibilityService() {
+class FocusGuardAccessibilityService : AccessibilityService() {
 
     private val container get() = (application as FocusApp).container
 
     private val mainHandler = Handler(Looper.getMainLooper())
 
-    /** pkg -> enabled element keys; kept fresh from Room, read on every event. */
+    // --- website state
+    private var lastCheckAt = 0L
+    private var lastDomain: String? = null
+    private var lastCreditAt = 0L
+
+    // --- element state
     private val enabledRules = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
-
     private var rulesJob: kotlinx.coroutines.Job? = null
-
-    // --- detection throttling / state
     private var lastDetectAt = 0L
     private var lastBackAt = 0L
     private var lastForeground: String? = null
-
-    /** "pkg|element" -> last attribution stamp (for the 7-day donut). */
     private val lastSeen = HashMap<String, Long>(8)
 
-    // --- cover overlay
+    // --- grayscale state (Curbox-style per-app monochrome filter)
+    private val screenOffReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            restoreIfOurs() // never leave the display stuck monochrome behind a locked screen
+        }
+    }
+
     private var coverView: View? = null
     private var coverShown = false
-
-    // --- countdown pill
     private var pillView: View? = null
     private var pillShown = false
     private var pillPkg: String? = null
@@ -83,7 +89,7 @@ class ElementBlockService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        container.elementConnected = true
+        container.a11yConnected = true
         rulesJob = container.scope.launch {
             container.db.elementRuleDao().observeAll().collect { rules ->
                 enabledRules.value = rules.filter { it.enabled }
@@ -91,8 +97,13 @@ class ElementBlockService : AccessibilityService() {
                     .mapValues { (_, keys) -> keys.toSet() }
             }
         }
-        // Refresh pill state once after (re)connecting over a limited app.
-        lastForeground?.let { updateCountdown(it) }
+        runCatching {
+            registerReceiver(screenOffReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
+        }
+        lastForeground?.let {
+            updateCountdown(it)
+            applyGrayscale(it)
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
@@ -102,20 +113,109 @@ class ElementBlockService : AccessibilityService() {
 
         when (e.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                container.enforcement.onForeground(pkg)
                 lastForeground = pkg
                 updateCountdown(pkg)
+                applyGrayscale(pkg)
                 resetAttribution()
                 runDetection(pkg)
+                if (pkg in BROWSERS) checkWebsite(e, pkg)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                if (enabledRules.value[pkg] == null && enabledRules.value[canonical(pkg)] == null) return
-                val now = System.currentTimeMillis()
-                if (now - lastDetectAt < DETECT_THROTTLE_MS) return
-                lastDetectAt = now
-                runDetection(pkg)
+                if (enabledRules.value[pkg] != null || enabledRules.value[canonical(pkg)] != null) {
+                    val now = System.currentTimeMillis()
+                    if (now - lastDetectAt >= DETECT_THROTTLE_MS) {
+                        lastDetectAt = now
+                        runDetection(pkg)
+                    }
+                }
+                if (pkg in BROWSERS) checkWebsite(e, pkg)
             }
         }
     }
+
+    // --- website blocking ---------------------------------------------------
+
+    private fun checkWebsite(e: AccessibilityEvent, pkg: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastCheckAt < MIN_CHECK_INTERVAL_MS) return
+        lastCheckAt = now
+
+        val raw = findAddressText() ?: return
+        val host = UrlMatcher.normalizeDomain(raw) ?: return
+
+        attribute(host, now)
+
+        if (container.webBlockingActive.value) {
+            val hit = UrlMatcher.matches(host, container.blocklist.value)
+            if (hit != null) {
+                block(hit, pkg)
+                return
+            }
+        }
+
+        container.scope.launch {
+            val titleText = e.text?.joinToString(" ") ?: ""
+            val keyword = container.enforcement.keywordHit("$raw $titleText")
+            if (keyword != null) {
+                block(keyword, pkg)
+                return@launch
+            }
+            if (container.enforcement.domainLimitExhausted(host)) {
+                block(host, pkg)
+            }
+        }
+    }
+
+    private fun block(target: String, pkg: String) {
+        container.scope.launch { container.enforcement.blockWebsite(target, pkg) }
+    }
+
+    private fun attribute(host: String, now: Long) {
+        val prev = lastDomain
+        if (prev != host) {
+            prev?.let { credit(it, now) }
+            lastDomain = host
+            lastCreditAt = now
+            return
+        }
+        credit(host, now)
+    }
+
+    private fun credit(domain: String, now: Long) {
+        val elapsed = (now - lastCreditAt).coerceIn(0L, WEB_MAX_CREDIT_MS)
+        lastCreditAt = now
+        if (elapsed < WEB_MIN_CREDIT_MS) return
+        container.scope.launch { container.usage.creditWebsite(domain, elapsed, now) }
+    }
+
+    private fun findAddressText(): String? {
+        val root = rootInActiveWindow ?: return null
+        val candidates = ArrayList<String>(4)
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        try {
+            while (queue.isNotEmpty() && visited < MAX_NODES_ADDRESS) {
+                val node = queue.poll()
+                visited++
+                val cls = node.className?.toString() ?: ""
+                if (cls.endsWith("EditText")) {
+                    node.text?.toString()?.takeIf { it.isNotBlank() }?.let { candidates.add(it) }
+                    node.hintText?.toString()?.takeIf { it.isNotBlank() }?.let { candidates.add(it) }
+                    node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { candidates.add(it) }
+                }
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let { queue.add(it) }
+                }
+            }
+        } catch (_: Exception) {
+            // Best effort only — never crash the accessibility pipeline.
+        }
+        return candidates.firstOrNull { UrlMatcher.looksLikeWebAddress(it) }
+    }
+
+    // --- element blocking ---------------------------------------------------
 
     private fun canonical(pkg: String): String = when (pkg) {
         "com.ss.android.ugc.trill" -> "com.zhiliaoapp.musically"
@@ -127,8 +227,6 @@ class ElementBlockService : AccessibilityService() {
 
     private fun rulesFor(pkg: String): Set<String> =
         enabledRules.value[pkg] ?: enabledRules.value[canonical(pkg)] ?: emptySet()
-
-    // --- countdown pill -----------------------------------------------------
 
     private fun updateCountdown(pkg: String) {
         container.scope.launch {
@@ -196,8 +294,6 @@ class ElementBlockService : AccessibilityService() {
         pillPkg = null
     }
 
-    // --- detection ----------------------------------------------------------
-
     private fun runDetection(pkg: String) {
         val keys = rulesFor(pkg)
         val specs = if (keys.isEmpty()) emptyList()
@@ -216,7 +312,7 @@ class ElementBlockService : AccessibilityService() {
             val queue = ArrayDeque<AccessibilityNodeInfo>()
             queue.add(root)
             var visited = 0
-            while (queue.isNotEmpty() && visited < MAX_NODES && matched.size < specs.size) {
+            while (queue.isNotEmpty() && visited < MAX_NODES_DETECT && matched.size < specs.size) {
                 val node = queue.poll() ?: continue
                 visited++
                 for (spec in specs) {
@@ -241,9 +337,6 @@ class ElementBlockService : AccessibilityService() {
             return
         }
 
-        // Attribute foreground time per element for the 7-day donut.
-        // Credits go under the canonical package so aliases (clones/mods)
-        // roll up into the same card and rules.
         val creditPkg = canonical(pkg)
         val now = System.currentTimeMillis()
         for ((spec, _) in matched) {
@@ -251,8 +344,8 @@ class ElementBlockService : AccessibilityService() {
             val prev = lastSeen[key]
             lastSeen[key] = now
             if (prev != null) {
-                val elapsed = (now - prev).coerceIn(0L, MAX_CREDIT_MS)
-                if (elapsed >= MIN_CREDIT_MS) {
+                val elapsed = (now - prev).coerceIn(0L, ELEM_MAX_CREDIT_MS)
+                if (elapsed >= ELEM_MIN_CREDIT_MS) {
                     val day = container.usage.todayKey(now)
                     container.scope.launch {
                         runCatching { container.db.elementUsageDao().add(day, creditPkg, spec.key, elapsed) }
@@ -281,7 +374,7 @@ class ElementBlockService : AccessibilityService() {
 
     private fun matches(node: AccessibilityNodeInfo, spec: ElementSpec): Boolean {
         if (spec.ids.isNotEmpty()) {
-            val id = node.viewIdResourceName ?: "" // requires flagReportViewIds
+            val id = node.viewIdResourceName ?: ""
             if (id.isNotEmpty() && spec.ids.any { id.contains(it, ignoreCase = true) }) return true
         }
         if (spec.texts.isNotEmpty()) {
@@ -293,12 +386,38 @@ class ElementBlockService : AccessibilityService() {
     }
 
     private fun resetAttribution() {
-        // Returning to the app starts attribution fresh; the per-step cap
-        // prevents long gaps from inflating any single credit.
         lastSeen.clear()
     }
 
-    // --- cover overlay ------------------------------------------------------
+    // --- grayscale ----------------------------------------------------------
+
+    /** Apply/restore the per-app monochrome filter for [pkg]. */
+    private fun applyGrayscale(pkg: String) {
+        val owned = container.grayActive.value
+        if (!Grayscale.hasPermission(this)) {
+            if (owned) restoreIfOurs()
+            return
+        }
+        val inList = pkg in container.grayscaleApps.value &&
+            pkg != packageName &&
+            !Allowlist.isAllowlisted(pkg)
+        if (inList) {
+            if (!owned || !Grayscale.isEnabled(this)) {
+                if (Grayscale.set(this, true)) {
+                    container.scope.launch { container.settings.setGrayActive(true) }
+                }
+            }
+        } else if (owned && Grayscale.isEnabled(this)) {
+            restoreIfOurs()
+        }
+    }
+
+    /** Remove the filter only when FocusGuard applied it itself. */
+    private fun restoreIfOurs() {
+        if (!container.grayActive.value) return
+        if (Grayscale.isEnabled(this)) Grayscale.set(this, false)
+        container.scope.launch { container.settings.setGrayActive(false) }
+    }
 
     private fun showCover(bounds: Rect) {
         val wm = getSystemService(WindowManager::class.java)
@@ -346,20 +465,64 @@ class ElementBlockService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     override fun onDestroy() {
-        container.elementConnected = false
+        container.a11yConnected = false
         rulesJob?.cancel()
+        runCatching { unregisterReceiver(screenOffReceiver) }
+        restoreIfOurs()
         mainHandler.removeCallbacksAndMessages(null)
         hideCover()
         hidePill()
+        lastDomain?.let { domain ->
+            val elapsed = (System.currentTimeMillis() - lastCreditAt).coerceIn(0L, WEB_MAX_CREDIT_MS)
+            if (elapsed >= WEB_MIN_CREDIT_MS) {
+                runCatching {
+                    kotlinx.coroutines.runBlocking {
+                        container.usage.creditWebsite(domain, elapsed, System.currentTimeMillis())
+                    }
+                }
+            }
+        }
         super.onDestroy()
     }
 
     companion object {
-        private const val MAX_NODES = 300
+        private const val MAX_NODES_ADDRESS = 250
+        private const val MAX_NODES_DETECT = 300
+        private const val MIN_CHECK_INTERVAL_MS = 1_200L
+        private const val WEB_MAX_CREDIT_MS = 60_000L
+        private const val WEB_MIN_CREDIT_MS = 1_000L
+        private const val ELEM_MAX_CREDIT_MS = 15_000L
+        private const val ELEM_MIN_CREDIT_MS = 2_000L
         private const val DETECT_THROTTLE_MS = 400L
         private const val BACK_COOLDOWN_MS = 2_000L
-        private const val MAX_CREDIT_MS = 15_000L
-        private const val MIN_CREDIT_MS = 2_000L
         private const val FULLSCREEN_RATIO = 0.55
+
+        val BROWSERS = setOf(
+            "com.android.chrome",
+            "com.google.android.apps.chrome",
+            "org.chromium.chrome",
+            "org.mozilla.firefox",
+            "org.mozilla.firefox_beta",
+            "org.mozilla.fenix",
+            "com.mozilla.firefox",
+            "com.microsoft.emmx",
+            "com.microsoft.browser",
+            "com.sec.android.app.sbrowser",
+            "com.opera.browser",
+            "com.opera.mini.native",
+            "com.opera.gx",
+            "com.brave.browser",
+            "com.duckduckgo.mobile.android",
+            "com.UCMobile",
+            "com.uc.browser",
+            "com.mi.globalbrowser",
+            "com.mi.globalbrowser.minus",
+            "com.android.browser",
+            "com.huawei.browser",
+            "com.vivo.browser",
+            "com.oppo.browser",
+            "com.oneplus.browser",
+            "com.zhiliaoapp.musically" // TikTok's in-app browser is a common escape hatch
+        )
     }
 }

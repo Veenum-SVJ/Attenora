@@ -11,6 +11,7 @@ import dev.opensource.focusguard.data.UsageRepository
 import dev.opensource.focusguard.domain.CategoryClassifier
 import dev.opensource.focusguard.enforcement.Alarms
 import dev.opensource.focusguard.enforcement.EnforcementManager
+import dev.opensource.focusguard.enforcement.FocusSession
 import dev.opensource.focusguard.enforcement.Notifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +30,9 @@ class FocusApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        val t0 = android.os.SystemClock.elapsedRealtime()
         container = AppContainer(this)
+        android.util.Log.d("FGSTART", "app container init: ${android.os.SystemClock.elapsedRealtime() - t0}ms")
     }
 }
 
@@ -38,6 +41,8 @@ class FocusApp : Application() {
  * analytics, no background service of its own — everything lives on-device.
  */
 class AppContainer(val app: Context) {
+
+    private val containerInitT0 = android.os.SystemClock.elapsedRealtime()
 
     val db: AppDatabase = Room.databaseBuilder(app, AppDatabase::class.java, "focusguard.db")
         .fallbackToDestructiveMigration()
@@ -57,17 +62,9 @@ class AppContainer(val app: Context) {
 
     val enforcement = EnforcementManager(app, settings, db, usage, scope)
 
-    /** True while the lightweight foreground-monitor accessibility service is connected. */
+    /** True while the single FocusGuard accessibility service is connected. */
     @Volatile
-    var monitorConnected = false
-
-    /** True while the (optional, heavier) website-blocking accessibility service is connected. */
-    @Volatile
-    var webMonitorConnected = false
-
-    /** True while the element-block/countdown accessibility service is connected. */
-    @Volatile
-    var elementConnected = false
+    var a11yConnected = false
 
     /** True while the notification listener for "Block Notifications" is connected. */
     @Volatile
@@ -90,7 +87,16 @@ class AppContainer(val app: Context) {
             .map { list -> list.map { "${it.kind}:${it.id}" }.toSet() }
             .stateIn(scope, SharingStarted.Eagerly, emptySet())
 
+    /** Apps that open in grayscale (Curbox-style monochrome filter). */
+    val grayscaleApps: StateFlow<Set<String>> =
+        settings.grayscaleApps.stateIn(scope, SharingStarted.Eagerly, emptySet())
+
+    /** True while FocusGuard itself has the grayscale filter applied. */
+    val grayActive: StateFlow<Boolean> =
+        settings.grayActive.stateIn(scope, SharingStarted.Eagerly, false)
+
     init {
+        val t0 = android.os.SystemClock.elapsedRealtime()
         Notifier.ensureChannels(app)
 
         // Keep alarms in sync with schedule edits; Flow collection also
@@ -144,6 +150,11 @@ class AppContainer(val app: Context) {
             // Seed the built-in categories exactly once (offline classifier).
             seedCategories()
         }
+        scope.launch {
+            // Fold any focus session that ended while the process was dead.
+            runCatching { FocusSession.finalize(this@AppContainer) }
+        }
+        android.util.Log.d("FGSTART", "container init done: ${android.os.SystemClock.elapsedRealtime() - containerInitT0}ms")
     }
 
     private suspend fun seedCategories() {

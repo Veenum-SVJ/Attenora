@@ -49,13 +49,20 @@ class EnforcementManager(
         const val FIVE_MIN_MS = 5 * 60_000L
     }
 
-    /** blocked / remaining time / why / (when blocked==false) session choices offered. */
+    /**
+     * blocked / remaining time / why. When [autoSession] is set, a SESSION
+     * limit has no active grant yet — the caller starts it silently with the
+     * limit's fixed length (no prompt; the "how many minutes?" dialog is gone).
+     */
     data class Decision(
         val blocked: Boolean,
         val remainingMs: Long = Long.MAX_VALUE,
         val reason: String = "",
-        val sessionChoices: List<Int> = emptyList()
+        val autoSession: AutoSession? = null
     )
+
+    /** target to grant -> fixed session length in minutes. */
+    data class AutoSession(val targetId: String, val minutes: Int)
 
     val limits: StateFlow<List<UsageLimit>> =
         db.usageLimitDao().observeAll()
@@ -116,13 +123,15 @@ class EnforcementManager(
             return
         }
 
-        // Variable session limit with no active grant → ask "how long?".
-        if (decision.sessionChoices.isNotEmpty()) {
-            if (BlockOverlayActivity.visible) return
-            if (now - lastOverlayAt < OVERLAY_THROTTLE_MS) return
-            lastOverlayAt = now
-            SessionPromptActivity.launch(context, pkg, decision.sessionChoices.toIntArray())
-            return
+        // Variable session limit with no active grant → start the fixed-
+        // length session silently (set once when the limit was created).
+        decision.autoSession?.let { auto ->
+            db.sessionGrantDao().upsert(
+                dev.opensource.focusguard.data.SessionGrant(
+                    targetId = auto.targetId,
+                    untilMs = now + auto.minutes * 60_000L
+                )
+            )
         }
 
         maybeWarnFiveMinutes(pkg, decision.remainingMs, now)
@@ -145,7 +154,7 @@ class EnforcementManager(
 
         // 3+4+5+6. Typed limits that match this package (directly or by category).
         var remaining = Long.MAX_VALUE
-        var sessionChoices: List<Int> = emptyList()
+        var autoSession: AutoSession? = null
 
         for (limit in limits.value) {
             if (!limit.enabled) continue
@@ -170,7 +179,7 @@ class EnforcementManager(
                 LimitType.DAILY -> {
                     // Website visits may be excluded from daily accounting.
                     val ignoreWebsites = settings.ignoreWebsites.first()
-                    if (ignoreWebsites && pkg in WebBlockService.BROWSERS) continue
+                    if (ignoreWebsites && pkg in FocusGuardAccessibilityService.BROWSERS) continue
                     val used = usedForLimit(limit, pkg, now)
                     val decision = LimitEngine.dailyDecision(used, limit.dailyLimitMs)
                     if (decision.blocked) {
@@ -180,9 +189,16 @@ class EnforcementManager(
                 }
 
                 LimitType.SESSION -> {
-                    val grantUntil = sessionGrants.value[sessionTarget(limit, pkg)] ?: 0L
-                    if (!LimitEngine.sessionGrantActive(grantUntil, now)) {
-                        sessionChoices = LimitEngine.parseSessionChoices(limit.sessionChoices)
+                    val target = sessionTarget(limit, pkg)
+                    val grantUntil = sessionGrants.value[target] ?: 0L
+                    if (LimitEngine.sessionGrantActive(grantUntil, now)) {
+                        // Count the live session toward "remaining" so the
+                        // 5-minute-left warning fires as the window closes.
+                        remaining = minOf(remaining, grantUntil - now)
+                    } else {
+                        // Fixed length stored in dailyLimitMs when the limit was made.
+                        val minutes = (limit.dailyLimitMs / 60_000L).toInt().coerceIn(1, 10_080)
+                        autoSession = AutoSession(target, minutes)
                     }
                 }
             }
@@ -195,10 +211,7 @@ class EnforcementManager(
             remaining = minOf(remaining, siteDecision.remainingMs)
         }
 
-        if (sessionChoices.isNotEmpty() && remaining == Long.MAX_VALUE) {
-            return Decision(blocked = false, sessionChoices = sessionChoices)
-        }
-        return Decision(blocked = false, remainingMs = remaining)
+        return Decision(blocked = false, remainingMs = remaining, autoSession = autoSession)
     }
 
     /** Does [limit] target this package directly, via its category, or everything? */
@@ -231,7 +244,7 @@ class EnforcementManager(
 
     /** Daily decision for website-target limits while a browser is foreground. */
     private suspend fun websiteDecision(browserPkg: String, now: Long): Decision? {
-        if (browserPkg !in WebBlockService.BROWSERS) return null
+        if (browserPkg !in FocusGuardAccessibilityService.BROWSERS) return null
         var remaining = Long.MAX_VALUE
         var hit = false
         for (limit in websiteDailyLimits()) {
@@ -284,7 +297,7 @@ class EnforcementManager(
         BlockOverlayActivity.launch(context, browserPkg, BlockOverlayActivity.REASON_WEBSITE, domain)
     }
 
-    /** Block-keyword check for extracted page text (called by WebBlockService). */
+    /** Block-keyword check for extracted page text (called by the accessibility service). */
     suspend fun keywordHit(text: String): String? {
         if (keywords.value.isEmpty()) return null
         return KeywordMatcher.match(text, keywords.value)

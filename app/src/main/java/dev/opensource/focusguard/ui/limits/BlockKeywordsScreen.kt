@@ -39,7 +39,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Block Keywords: while website blocking is on, page addresses/titles that
- * contain a keyword are blocked too (checked in WebBlockService).
+ * contain a keyword are blocked too (checked in the accessibility service).
  */
 @Composable
 fun BlockKeywordsScreen(onBack: () -> Unit) {

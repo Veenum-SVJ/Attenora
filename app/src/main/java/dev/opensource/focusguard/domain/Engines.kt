@@ -210,6 +210,86 @@ object ChallengeEngine {
         input.trim().toIntOrNull() == problem.answer
 }
 
+/**
+ * Pure unlock-extra logic (Curbox ports): per-day unlock quota and state
+ * persistence decisions. Unit-tested on the JVM.
+ */
+object UnlockEngine {
+
+    /** Delay before unlock buttons become tappable, in 0..60 seconds. */
+    fun clampDelaySeconds(seconds: Int): Int = seconds.coerceIn(0, 60)
+
+    /**
+     * May the prompt grant another unlock right now?
+     * [quota] = 0 means unlimited; otherwise the count resets on the usage day.
+     */
+    fun canUnlock(
+        now: Long,
+        usedDay: String,
+        usedCount: Int,
+        quota: Int,
+        resetHour: Int,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): Boolean {
+        if (quota <= 0) return true
+        val today = ResetEngine.dayKey(now, resetHour, zone)
+        val used = if (today == usedDay) usedCount else 0
+        return used < quota
+    }
+
+    /** The (dayKey, count) to persist after one more unlock is granted. */
+    fun recordUnlock(
+        now: Long,
+        usedDay: String,
+        usedCount: Int,
+        quota: Int,
+        resetHour: Int,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): Pair<String, Int> {
+        val today = ResetEngine.dayKey(now, resetHour, zone)
+        val used = if (today == usedDay) usedCount else 0
+        return today to (used + 1)
+    }
+}
+
+/**
+ * Pure focus-session accrual: completed session minutes land on the usage
+ * day the session started on; only time actually spent is counted when a
+ * session ends early. Unit-tested on the JVM.
+ */
+object FocusSessionEngine {
+
+    data class Session(val startMs: Long, val endMs: Long)
+    data class Accrual(val dayKey: String, val minutes: Int)
+
+    val empty = Accrual("", 0)
+
+    /** Minutes accrued into [accrual] today, per the usage-day clock. */
+    fun accruedToday(
+        accrual: Accrual,
+        now: Long,
+        resetHour: Int,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): Int =
+        if (accrual.dayKey == ResetEngine.dayKey(now, resetHour, zone)) accrual.minutes else 0
+
+    /** Fold a finished session (or an ended-early one) into [accrual]. */
+    fun accrue(
+        accrual: Accrual,
+        session: Session,
+        now: Long,
+        resetHour: Int,
+        zone: ZoneId = ZoneId.systemDefault()
+    ): Accrual {
+        val effectiveEnd = minOf(session.endMs, now)
+        val minutes = ((effectiveEnd - session.startMs) / 60_000L).coerceAtLeast(0L).toInt()
+        if (minutes <= 0) return accrual
+        val day = ResetEngine.dayKey(session.startMs, resetHour, zone)
+        return if (accrual.dayKey == day) accrual.copy(minutes = accrual.minutes + minutes)
+        else Accrual(day, minutes)
+    }
+}
+
 /** Block-keyword matching against page URLs / titles (website blocking). */
 object KeywordMatcher {
     /** Returns the keyword hit inside [text], case-insensitively, else null. */

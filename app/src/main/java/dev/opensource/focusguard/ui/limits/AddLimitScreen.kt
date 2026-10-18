@@ -68,6 +68,7 @@ fun AddLimitScreen(onBack: () -> Unit) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val gate = rememberChallengeGate()
 
     val targets = remember { mutableStateListOf<Target>() }
     var pickerOpen by remember { mutableStateOf(false) }
@@ -77,12 +78,11 @@ fun AddLimitScreen(onBack: () -> Unit) {
     var startMinute by remember { mutableStateOf(9 * 60) }
     var endMinute by remember { mutableStateOf(17 * 60) }
     var daysMask by remember { mutableStateOf(0x7F) }
-    var sessionChoices by remember { mutableStateOf(setOf(15, 30, 60, 1440)) }
+    /** SESSION only: fixed length granted each time the app is opened. */
+    var sessionMinutes by remember { mutableStateOf("30") }
     var name by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var saved by remember { mutableStateOf(false) }
-
-    val categories by container.categories.collectAsState()
 
     LaunchedEffect(saved) { if (saved) onBack() }
 
@@ -105,8 +105,8 @@ fun AddLimitScreen(onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                if (targets.isEmpty()) "Select apps, websites, or categories to limit"
-                else targets.joinToString(", ") { targetLabelOf(it, categories, context) },
+                if (targets.isEmpty()) "Select apps or websites to limit"
+                else    targets.joinToString(", ") { targetLabelOf(it, context) },
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Medium,
@@ -124,61 +124,59 @@ fun AddLimitScreen(onBack: () -> Unit) {
         )
         Spacer(Modifier.height(10.dp))
 
+        // Each type's options render directly under the row that opened them,
+        // above "Want to name your limit?" — nothing jumps to the bottom.
         TypeRow("Set a Daily Usage Limit", type == LimitType.DAILY) { type = LimitType.DAILY }
-        TypeRow("Block on a schedule", type == LimitType.SCHEDULE) { type = LimitType.SCHEDULE }
-        TypeRow("Block permanently", type == LimitType.PERMANENT) { type = LimitType.PERMANENT }
-        TypeRow("Enable variable session limits", type == LimitType.SESSION) { type = LimitType.SESSION }
+        if (type == LimitType.DAILY) {
+            OutlinedTextField(
+                value = dailyMinutes,
+                onValueChange = { dailyMinutes = it.filter(Char::isDigit).take(5) },
+                label = { Text("Daily limit (minutes per target)") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+        }
 
-        // ---- Type configuration ----
-        when (type) {
-            LimitType.DAILY -> {
-                OutlinedTextField(
-                    value = dailyMinutes,
-                    onValueChange = { dailyMinutes = it.filter(Char::isDigit).take(5) },
-                    label = { Text("Daily limit (minutes per target)") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp)
-                )
-            }
-            LimitType.SCHEDULE -> {
-                ScheduleEditor(
-                    startMinute = startMinute,
-                    endMinute = endMinute,
-                    daysMask = daysMask,
-                    onStart = { startMinute = it },
-                    onEnd = { endMinute = it },
-                    onDays = { daysMask = it }
-                )
-            }
-            LimitType.SESSION -> {
-                Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-                    Text(
-                        "Session choices offered when you open the app:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(15 to "15m", 30 to "30m", 60 to "1h", 1440 to "Tomorrow").forEach { (v, label) ->
-                            val checked = v in sessionChoices
-                            ChoiceChip(label = label, selected = checked) {
-                                sessionChoices = if (checked) sessionChoices - v else sessionChoices + v
-                            }
-                        }
-                    }
-                }
-            }
-            LimitType.PERMANENT -> {
-                Text(
-                    "This target will be blocked at all times until you remove the limit.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
-                )
-            }
+        TypeRow("Block on a schedule", type == LimitType.SCHEDULE) { type = LimitType.SCHEDULE }
+        if (type == LimitType.SCHEDULE) {
+            ScheduleEditor(
+                startMinute = startMinute,
+                endMinute = endMinute,
+                daysMask = daysMask,
+                onStart = { startMinute = it },
+                onEnd = { endMinute = it },
+                onDays = { daysMask = it }
+            )
+        }
+
+        TypeRow("Block permanently", type == LimitType.PERMANENT) { type = LimitType.PERMANENT }
+        if (type == LimitType.PERMANENT) {
+            Text(
+                "This target will be blocked at all times until you remove the limit.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+        }
+
+        TypeRow("Enable variable session limit", type == LimitType.SESSION) { type = LimitType.SESSION }
+        if (type == LimitType.SESSION) {
+            OutlinedTextField(
+                value = sessionMinutes,
+                onValueChange = { sessionMinutes = it.filter(Char::isDigit).take(4) },
+                label = { Text("Session length (minutes per open)") },
+                supportingText = {
+                    Text("Fixed — no prompt appears when you open the app.")
+                },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp)
+            )
         }
 
         Spacer(Modifier.height(20.dp))
@@ -226,13 +224,14 @@ fun AddLimitScreen(onBack: () -> Unit) {
                         t == null -> "Choose how you want to limit usage."
                         t == LimitType.DAILY && dailyMinutes.toIntOrNull()?.let { it <= 0 } != false ->
                             "Enter a daily limit in minutes."
-                        t == LimitType.SESSION && sessionChoices.isEmpty() ->
-                            "Pick at least one session choice."
+                        t == LimitType.SESSION && sessionMinutes.toIntOrNull()?.let { it <= 0 } != false ->
+                            "Enter the session length in minutes."
                         t != LimitType.SCHEDULE && targets.any { it.kind == TargetKind.ALL } ->
                             "\"Everything\" only works with Block on a schedule."
                         else -> null
                     }
                     if (error == null && t != null) {
+                        gate.request {
                         scope.launch {
                             for (target in targets) {
                                 when {
@@ -254,8 +253,11 @@ fun AddLimitScreen(onBack: () -> Unit) {
                                                 type = t,
                                                 targetKind = target.kind,
                                                 targetId = target.id,
-                                                dailyLimitMs = (dailyMinutes.toLongOrNull() ?: 30L) * 60_000L,
-                                                sessionChoices = sessionChoices.sorted().joinToString(","),
+                                                dailyLimitMs = (
+                                                    (if (t == LimitType.SESSION) sessionMinutes.toLongOrNull()
+                                                        else dailyMinutes.toLongOrNull()) ?: 30L
+                                                    ) * 60_000L,
+                                                sessionChoices = (sessionMinutes.toIntOrNull() ?: 30).toString(),
                                                 daysMask = daysMask,
                                                 startMinute = startMinute,
                                                 endMinute = endMinute,
@@ -270,6 +272,7 @@ fun AddLimitScreen(onBack: () -> Unit) {
                                 context, container.db.focusScheduleDao().all()
                             )
                             saved = true
+                        }
                         }
                     }
                 },
@@ -291,11 +294,9 @@ fun AddLimitScreen(onBack: () -> Unit) {
 
 private fun targetLabelOf(
     target: Target,
-    categories: List<dev.opensource.focusguard.data.Category>,
     context: android.content.Context
 ): String = when (target.kind) {
     TargetKind.APP -> appLabel(context, target.id)
-    TargetKind.CATEGORY -> categories.firstOrNull { it.id.toString() == target.id }?.name ?: "Category"
     TargetKind.ALL -> "Everything"
     else -> target.id
 }
@@ -443,7 +444,7 @@ private fun TimePickerDialog(title: String, initial: Int, onPick: (Int) -> Unit,
 private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
-    var tab by remember { mutableStateOf(0) } // 0 apps, 1 websites, 2 categories
+    var tab by remember { mutableStateOf(0) } // 0 apps, 1 websites, 2 everything
     var search by remember { mutableStateOf("") }
 
     val installedApps = remember {
@@ -455,7 +456,6 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
         }.getOrDefault(emptyList())
     }
 
-    val categories by container.categories.collectAsState()
     val sites by container.blocklist.collectAsState()
 
     androidx.compose.material3.Surface(
@@ -471,7 +471,7 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
                     .padding(horizontal = 20.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf("Apps", "Websites", "Categories").forEachIndexed { i, label ->
+                listOf("Apps", "Websites", "Everything").forEachIndexed { i, label ->
                     ChoiceChip(label = label, selected = tab == i) { tab = i }
                 }
             }
@@ -499,7 +499,7 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
                         search = ""
                     }) { Text("Add") }
                 }
-            } else {
+            } else if (tab == 0) {
                 OutlinedTextField(
                     value = search,
                     onValueChange = { search = it },
@@ -547,28 +547,11 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
                         }
                     }
                     else -> {
-                        items(categories, key = { it.id }) { cat ->
-                            TargetRow(
-                                leading = {
-                                    Box(
-                                        Modifier
-                                            .size(28.dp)
-                                            .clip(RoundedCornerShape(50))
-                                            .background(androidx.compose.ui.graphics.Color(cat.color))
-                                    )
-                                },
-                                title = cat.name,
-                                checked = Target(TargetKind.CATEGORY, cat.id.toString()) in selected,
-                                onToggle = {
-                                    val t = Target(TargetKind.CATEGORY, cat.id.toString())
-                                    if (t in selected) selected.remove(t) else selected.add(t)
-                                }
-                            )
-                        }
                         item {
                             TargetRow(
                                 leading = { FgIcon(FgIcons.Shield, null, size = 24.dp) },
-                                title = "Everything (focus schedule)",
+                                title = "Everything (block on a schedule)",
+                                subtitle = "Block the whole phone in a window you choose.",
                                 checked = Target(TargetKind.ALL, "") in selected,
                                 onToggle = {
                                     val t = Target(TargetKind.ALL, "")
@@ -604,6 +587,7 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
 private fun TargetRow(
     leading: @Composable () -> Unit,
     title: String,
+    subtitle: String? = null,
     checked: Boolean,
     onToggle: () -> Unit
 ) {
@@ -616,11 +600,16 @@ private fun TargetRow(
     ) {
         leading()
         Spacer(Modifier.width(14.dp))
-        Text(
-            title,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.weight(1f)
-        )
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
         Checkbox(checked = checked, onCheckedChange = { onToggle() })
     }
 }

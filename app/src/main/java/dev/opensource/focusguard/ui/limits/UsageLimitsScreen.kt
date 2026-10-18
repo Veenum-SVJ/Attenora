@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -24,8 +25,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -35,6 +39,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -52,6 +57,7 @@ import dev.opensource.focusguard.data.FocusSchedule
 import dev.opensource.focusguard.data.LimitType
 import dev.opensource.focusguard.data.TargetKind
 import dev.opensource.focusguard.data.UsageLimit
+import dev.opensource.focusguard.enforcement.FocusSession
 import dev.opensource.focusguard.domain.WeekEngine
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
@@ -81,17 +87,20 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
 
     val limits by container.enforcement.limits.collectAsState()
     val schedules by container.enforcement.schedules.collectAsState()
-    val categories by container.categories.collectAsState()
     val blockAllUntil by container.enforcement.blockAllUntil.collectAsState()
+    val focusDay by container.settings.focusDay.collectAsState(initial = "")
+    val focusMinutes by container.settings.focusMinutes.collectAsState(initial = 0)
     val grants by container.enforcement.sessionGrants.collectAsState()
 
     var statuses by remember { mutableStateOf<Map<Long, LimitStatus>>(emptyMap()) }
     var editingMinutes by remember { mutableStateOf<UsageLimit?>(null) }
 
-    var sDaily by rememberSaveable { mutableStateOf(true) }
-    var sSession by rememberSaveable { mutableStateOf(true) }
-    var sSchedule by rememberSaveable { mutableStateOf(true) }
-    var sPermanent by rememberSaveable { mutableStateOf(true) }
+    // Each section lives in its own bordered box, collapsed on entry —
+    // leaving the tab and coming back collapses them again.
+    var sDaily by remember { mutableStateOf(false) }
+    var sSession by remember { mutableStateOf(false) }
+    var sSchedule by remember { mutableStateOf(false) }
+    var sPermanent by remember { mutableStateOf(false) }
     var editMode by rememberSaveable { mutableStateOf(false) }
     var fabExpanded by rememberSaveable { mutableStateOf(false) }
 
@@ -103,13 +112,6 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                 if (limit.type != LimitType.DAILY) continue
                 val used = when (limit.targetKind) {
                     TargetKind.WEBSITE -> container.usage.websiteMsToday(limit.targetId)
-                    TargetKind.CATEGORY -> {
-                        val id = limit.targetId.toLongOrNull() ?: 0L
-                        val pkgs = container.enforcement.categoryMembers.value
-                            .filter { it.categoryId == id && it.key.startsWith("app:") }
-                            .map { it.key.removePrefix("app:") }
-                        pkgs.sumOf { container.usage.usedMsToday(it) }
-                    }
                     else -> container.usage.usedMsToday(limit.targetId)
                 }
                 map[limit.id] = LimitStatus(used, limit.dailyLimitMs, used >= limit.dailyLimitMs)
@@ -121,7 +123,7 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
 
     fun matchesFilter(l: UsageLimit): Boolean {
         if (query.isBlank()) return true
-        val label = targetLabel(l.targetKind, l.targetId, categories, context).lowercase()
+        val label = targetLabel(l.targetKind, l.targetId, context).lowercase()
         val name = l.name.lowercase()
         val q = query.trim().lowercase()
         return label.contains(q) || name.contains(q)
@@ -132,8 +134,18 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
     val typedSchedules = limits.filter { it.type == LimitType.SCHEDULE && matchesFilter(it) }
     val permanent = limits.filter { it.type == LimitType.PERMANENT && matchesFilter(it) }
 
-    val now = System.currentTimeMillis()
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
     val blockActive = blockAllUntil > now
+    val focusedToday = if (focusDay == container.usage.todayKey()) focusMinutes else 0
+    LaunchedEffect(blockActive) {
+        if (blockActive) {
+            while (true) {
+                delay(1_000L)
+                now = System.currentTimeMillis()
+                if (blockAllUntil <= now) break
+            }
+        }
+    }
 
     LazyColumn(Modifier.fillMaxSize()) {
         item {
@@ -169,9 +181,10 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                         Spacer(Modifier.weight(1f))
                         if (blockActive) {
                             Text(
-                                "until ${formatClock(blockAllUntil.let { java.time.Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).hour * 60 + java.time.Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).minute })}",
+                                "until ${formatClock(blockAllUntil.let { java.time.Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).hour * 60 + java.time.Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()).minute })} · ${formatDuration(blockAllUntil - now)} left",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.primary
+                                color = MaterialTheme.colorScheme.primary,
+                                maxLines = 1
                             )
                         }
                     }
@@ -182,12 +195,20 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Focused today: " + if (focusedToday <= 0) "0m"
+                        else formatDuration(focusedToday * 60_000L),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.primary
+                    )
                     Spacer(Modifier.height(12.dp))
                     if (blockActive) {
                         OutlinedButton(
                             onClick = {
                                 gate.request {
-                                    scope.launch { container.settings.setBlockAllUntil(0L) }
+                                    scope.launch { FocusSession.end(container) }
                                 }
                             },
                             modifier = Modifier.fillMaxWidth()
@@ -207,7 +228,7 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                                                 .atStartOfDay(ZoneId.systemDefault())
                                                 .toInstant().toEpochMilli()
                                         } else System.currentTimeMillis() + ms
-                                        scope.launch { container.settings.setBlockAllUntil(until) }
+                                        scope.launch { FocusSession.start(container, until) }
                                     },
                                     modifier = Modifier.weight(1f)
                                 ) { Text(label, maxLines = 1) }
@@ -219,131 +240,164 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
         }
 
         // ---- Sections ----
-        section("Limited Daily Usage", daily.size, sDaily, { sDaily = !sDaily }) {
-            daily.forEach { limit ->
-                item(key = "daily-${limit.id}") {
-                    DailyRow(
-                        limit = limit,
-                        status = statuses[limit.id],
-                        categories = categories,
-                        editMode = editMode,
-                        onToggle = { on ->
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+        item {
+            SectionBox(
+                title = "Limited Daily Usage",
+                count = daily.size,
+                expanded = sDaily,
+                onToggle = { sDaily = !sDaily }
+            ) {
+                if (daily.isEmpty()) {
+                    EmptySectionHint()
+                } else {
+                    daily.forEach { limit ->
+                        DailyRow(
+                            limit = limit,
+                            status = statuses[limit.id],
+                            editMode = editMode,
+                            onToggle = { on ->
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+                                }
+                            },
+                            onEdit = { editingMinutes = limit },
+                            onDelete = {
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().delete(limit.id) }
+                                }
                             }
-                        },
-                        onEdit = { editingMinutes = limit },
-                        onDelete = {
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().delete(limit.id) }
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
 
-        section("Variable Session Limits Enabled", session.size, sSession, { sSession = !sSession }) {
-            session.forEach { limit ->
-                item(key = "sess-${limit.id}") {
-                    SimpleLimitRow(
-                        icon = FgIcons.Stopwatch,
-                        title = targetLabel(limit.targetKind, limit.targetId, categories, context),
-                        subtitle = grants[limit.targetId]?.let { until ->
-                            if (until > System.currentTimeMillis()) "Session granted until ${
-                                formatClock(java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).hour * 60 +
-                                    java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).minute)
-                            }" else null
-                        } ?: "Asks how long each time you open it",
-                        enabled = limit.enabled,
-                        editMode = editMode,
-                        onToggle = { on ->
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+        item {
+            SectionBox(
+                title = "Variable Session Limits",
+                count = session.size,
+                expanded = sSession,
+                onToggle = { sSession = !sSession }
+            ) {
+                if (session.isEmpty()) {
+                    EmptySectionHint()
+                } else {
+                    session.forEach { limit ->
+                        SimpleLimitRow(
+                            icon = FgIcons.Stopwatch,
+                            title = targetLabel(limit.targetKind, limit.targetId, context),
+                            subtitle = grants[limit.targetId]?.let { until ->
+                                if (until > System.currentTimeMillis()) "Session until ${
+                                    formatClock(java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).hour * 60 +
+                                        java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).minute)
+                                }" else null
+                            } ?: "${(limit.dailyLimitMs / 60_000L).toInt()} min per open — starts automatically",
+                            enabled = limit.enabled,
+                            editMode = editMode,
+                            onToggle = { on ->
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+                                }
+                            },
+                            onDelete = {
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().delete(limit.id) }
+                                }
                             }
-                        },
-                        onDelete = {
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().delete(limit.id) }
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
 
-        section("Scheduled Blocks", typedSchedules.size + schedules.size, sSchedule, { sSchedule = !sSchedule }) {
-            typedSchedules.forEach { limit ->
-                item(key = "sched-${limit.id}") {
-                    SimpleLimitRow(
-                        icon = FgIcons.Clock,
-                        title = limit.name.ifBlank {
-                            targetLabel(limit.targetKind, limit.targetId, categories, context)
-                        },
-                        subtitle = "${formatClock(limit.startMinute)} – ${
-                            if (limit.endMinute <= limit.startMinute) "+" else ""
-                        }${formatClock(limit.endMinute)} · ${daysSummary(limit.daysMask)}",
-                        enabled = limit.enabled,
-                        editMode = editMode,
-                        onToggle = { on ->
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+        item {
+            SectionBox(
+                title = "Scheduled Blocks",
+                count = typedSchedules.size + schedules.size,
+                expanded = sSchedule,
+                onToggle = { sSchedule = !sSchedule }
+            ) {
+                if (typedSchedules.isEmpty() && schedules.isEmpty()) {
+                    EmptySectionHint()
+                } else {
+                    typedSchedules.forEach { limit ->
+                        SimpleLimitRow(
+                            icon = FgIcons.Clock,
+                            title = limit.name.ifBlank {
+                                targetLabel(limit.targetKind, limit.targetId, context)
+                            },
+                            subtitle = "${formatClock(limit.startMinute)} – ${
+                                if (limit.endMinute <= limit.startMinute) "+" else ""
+                            }${formatClock(limit.endMinute)} · ${daysSummary(limit.daysMask)}",
+                            enabled = limit.enabled,
+                            editMode = editMode,
+                            onToggle = { on ->
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+                                }
+                            },
+                            onDelete = {
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().delete(limit.id) }
+                                }
                             }
-                        },
-                        onDelete = {
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().delete(limit.id) }
+                        )
+                    }
+                    schedules.forEach { schedule ->
+                        SimpleLimitRow(
+                            icon = FgIcons.Shield,
+                            title = schedule.name,
+                            subtitle = "${formatClock(schedule.startMinute)} – ${
+                                if (schedule.endMinute <= schedule.startMinute) "+" else ""
+                            }${formatClock(schedule.endMinute)} · ${daysSummary(schedule.daysMask)}" +
+                                if (schedule.blockAll) " · everything" else "",
+                            enabled = schedule.enabled,
+                            editMode = editMode,
+                            onToggle = { on ->
+                                gate.request {
+                                    scope.launch { container.db.focusScheduleDao().setEnabled(schedule.id, on) }
+                                }
+                            },
+                            onDelete = {
+                                gate.request {
+                                    scope.launch { container.db.focusScheduleDao().delete(schedule.id) }
+                                }
                             }
-                        }
-                    )
-                }
-            }
-            schedules.forEach { schedule ->
-                item(key = "focus-${schedule.id}") {
-                    SimpleLimitRow(
-                        icon = FgIcons.Shield,
-                        title = schedule.name,
-                        subtitle = "${formatClock(schedule.startMinute)} – ${
-                            if (schedule.endMinute <= schedule.startMinute) "+" else ""
-                        }${formatClock(schedule.endMinute)} · ${daysSummary(schedule.daysMask)}" +
-                            if (schedule.blockAll) " · everything" else "",
-                        enabled = schedule.enabled,
-                        editMode = editMode,
-                        onToggle = { on ->
-                            gate.request {
-                                scope.launch { container.db.focusScheduleDao().setEnabled(schedule.id, on) }
-                            }
-                        },
-                        onDelete = {
-                            gate.request {
-                                scope.launch { container.db.focusScheduleDao().delete(schedule.id) }
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
 
-        section("Permanently Blocked", permanent.size, sPermanent, { sPermanent = !sPermanent }) {
-            permanent.forEach { limit ->
-                item(key = "perm-${limit.id}") {
-                    SimpleLimitRow(
-                        icon = FgIcons.Block,
-                        title = targetLabel(limit.targetKind, limit.targetId, categories, context),
-                        subtitle = "Blocked at all times",
-                        enabled = limit.enabled,
-                        editMode = editMode,
-                        onToggle = { on ->
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+        item {
+            SectionBox(
+                title = "Permanently Blocked",
+                count = permanent.size,
+                expanded = sPermanent,
+                onToggle = { sPermanent = !sPermanent }
+            ) {
+                if (permanent.isEmpty()) {
+                    EmptySectionHint()
+                } else {
+                    permanent.forEach { limit ->
+                        SimpleLimitRow(
+                            icon = FgIcons.Block,
+                            title = targetLabel(limit.targetKind, limit.targetId, context),
+                            subtitle = "Blocked at all times",
+                            enabled = limit.enabled,
+                            editMode = editMode,
+                            onToggle = { on ->
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().setEnabled(limit.id, on) }
+                                }
+                            },
+                            onDelete = {
+                                gate.request {
+                                    scope.launch { container.db.usageLimitDao().delete(limit.id) }
+                                }
                             }
-                        },
-                        onDelete = {
-                            gate.request {
-                                scope.launch { container.db.usageLimitDao().delete(limit.id) }
-                            }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
@@ -371,7 +425,7 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                     horizontalAlignment = Alignment.End,
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    FabAction("Apps, Websites, or Categories", FgIcons.Phone) {
+                    FabAction("Apps or Websites", FgIcons.Phone) {
                         fabExpanded = false
                         onAddLimit()
                     }
@@ -437,11 +491,9 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
 private fun targetLabel(
     kind: String,
     id: String,
-    categories: List<dev.opensource.focusguard.data.Category>,
     context: android.content.Context
 ): String = when (kind) {
     TargetKind.APP -> appLabel(context, id)
-    TargetKind.CATEGORY -> categories.firstOrNull { it.id.toString() == id }?.name ?: "Category"
     TargetKind.ALL -> "Everything"
     else -> id
 }
@@ -453,57 +505,68 @@ private fun targetIcon(kind: String) = when (kind) {
     else -> FgIcons.Shield
 }
 
-private fun androidx.compose.foundation.lazy.LazyListScope.section(
+/** One bordered rectangle per section: header toggles the whole box. */
+@Composable
+private fun SectionBox(
     title: String,
     count: Int,
     expanded: Boolean,
     onToggle: () -> Unit,
-    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    item {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onToggle)
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "$title ($count)",
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = if (count > 0) MaterialTheme.colorScheme.onBackground
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
-            FgIcon(
-                if (expanded) FgIcons.ChevronUp else FgIcons.ChevronDown,
-                null,
-                size = 20.dp
-            )
-        }
-    }
-    if (expanded) {
-        if (count == 0) {
-            item {
+    OutlinedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        colors = CardDefaults.outlinedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        ),
+        border = CardDefaults.outlinedCardBorder()
+    ) {
+        Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(
-                    "Nothing here yet — tap ＋ to add a limit.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                    "$title ($count)",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = if (count > 0) MaterialTheme.colorScheme.onBackground
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f)
+                )
+                FgIcon(
+                    if (expanded) FgIcons.ChevronUp else FgIcons.ChevronDown,
+                    if (expanded) "Collapse" else "Expand",
+                    size = 20.dp
                 )
             }
-        } else {
-            content()
+            if (expanded) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+                Column(Modifier.padding(vertical = 4.dp), content = content)
+            }
         }
     }
+}
+
+@Composable
+private fun EmptySectionHint() {
+    Text(
+        "Nothing here yet — tap ＋ to add a limit.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+    )
 }
 
 @Composable
 private fun DailyRow(
     limit: UsageLimit,
     status: LimitStatus?,
-    categories: List<dev.opensource.focusguard.data.Category>,
     editMode: Boolean,
     onToggle: (Boolean) -> Unit,
     onEdit: () -> Unit,
@@ -535,7 +598,7 @@ private fun DailyRow(
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                targetLabel(limit.targetKind, limit.targetId, categories, context),
+                targetLabel(limit.targetKind, limit.targetId, context),
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,

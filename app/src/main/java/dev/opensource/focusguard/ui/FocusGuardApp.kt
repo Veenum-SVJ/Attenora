@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerValue
@@ -45,15 +46,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import dev.opensource.focusguard.ui.blocking.InAppBlockingScreen
-import dev.opensource.focusguard.ui.categories.CategoriesScreen
-import dev.opensource.focusguard.ui.categories.HiddenAppsScreen
 import dev.opensource.focusguard.ui.common.FgIcon
+import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.LocalAppContainer
+import dev.opensource.focusguard.ui.common.LocalTabChipShape
+import dev.opensource.focusguard.ui.common.tabChipShapeFor
 import dev.opensource.focusguard.ui.icons.FgIcons
 import dev.opensource.focusguard.ui.limits.AddLimitScreen
 import dev.opensource.focusguard.ui.limits.BlockKeywordsScreen
 import dev.opensource.focusguard.ui.limits.UsageLimitsScreen
-import dev.opensource.focusguard.ui.notifications.UsageNotificationsScreen
 import dev.opensource.focusguard.ui.onboarding.OnboardingScreen
 import dev.opensource.focusguard.ui.settings.SettingsScreen
 import dev.opensource.focusguard.ui.stats.UsageStatsScreen
@@ -61,9 +62,6 @@ import kotlinx.coroutines.launch
 
 /** Pushed (full-screen) destinations reachable from the drawer or lists. */
 sealed interface Pushed {
-    data object Notifications : Pushed
-    data object Categories : Pushed
-    data object HiddenApps : Pushed
     data object Settings : Pushed
     data object AddLimit : Pushed
     data object BlockKeywords : Pushed
@@ -119,8 +117,6 @@ fun FocusGuardApp() {
         DrawerItem("Home", FgIcons.Home) { scope.launch { drawerState.close() }; goTo(0) },
         DrawerItem("Usage Limits", FgIcons.Gauge) { scope.launch { drawerState.close() }; goTo(1) },
         DrawerItem("In-App Blocking", FgIcons.Grid) { scope.launch { drawerState.close() }; goTo(2) },
-        DrawerItem("Usage Notifications", FgIcons.Bell) { scope.launch { drawerState.close() }; push(Pushed.Notifications) },
-        DrawerItem("Categories", FgIcons.Shapes) { scope.launch { drawerState.close() }; push(Pushed.Categories) },
         DrawerItem("Settings", FgIcons.Sliders) { scope.launch { drawerState.close() }; push(Pushed.Settings) }
     )
 
@@ -134,6 +130,7 @@ fun FocusGuardApp() {
             ) {
                 Column(Modifier.fillMaxSize()) {
                     Spacer(Modifier.height(28.dp))
+                    val accent = LocalAccentColor.current
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -144,10 +141,10 @@ fun FocusGuardApp() {
                             Modifier
                                 .size(44.dp)
                                 .clip(RoundedCornerShape(14.dp))
-                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                                .background(accent.copy(alpha = 0.16f)),
                             contentAlignment = Alignment.Center
                         ) {
-                            FgIcon(FgIcons.ChartBar, null, size = 24.dp)
+                            FgIcon(FgIcons.ChartBar, null, size = 24.dp, tint = accent)
                         }
                         Spacer(Modifier.width(12.dp))
                         Text(
@@ -158,7 +155,7 @@ fun FocusGuardApp() {
                     }
                     Spacer(Modifier.height(24.dp))
                     drawerItems.forEachIndexed { index, item ->
-                        if (index == 4) {
+                        if (item.label == "Settings") {
                             HorizontalDivider(
                                 Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
                                 color = MaterialTheme.colorScheme.outlineVariant
@@ -211,10 +208,13 @@ fun FocusGuardApp() {
                 }
             },
             bottomBar = {
-                AppBottomBar(
-                    selected = tab,
-                    onSelect = { tab = it; pushed = null; searchActive = false; searchQuery = "" }
-                )
+                // Pushed screens are full-screen with a back arrow — no tab bar.
+                if (current == null) {
+                    AppBottomBar(
+                        selected = tab,
+                        onSelect = { tab = it; pushed = null; searchActive = false; searchQuery = "" }
+                    )
+                }
             }
         ) { padding ->
             Box(
@@ -246,9 +246,10 @@ fun FocusGuardApp() {
 
 @Composable
 private fun DrawerRow(item: DrawerItem) {
+    val accent = LocalAccentColor.current
     val colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-        selectedContainerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
-        selectedTextColor = MaterialTheme.colorScheme.primary
+        selectedContainerColor = accent.copy(alpha = 0.16f),
+        selectedTextColor = accent
     )
     androidx.compose.material3.NavigationDrawerItem(
         label = { Text(item.label, fontWeight = FontWeight.Medium) },
@@ -271,6 +272,7 @@ private fun SearchPill(
     Row(
         Modifier
             .fillMaxWidth()
+            .statusBarsPadding()
             .padding(horizontal = 16.dp, vertical = 10.dp)
             .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surface)
@@ -289,7 +291,7 @@ private fun SearchPill(
                 textStyle = MaterialTheme.typography.bodyLarge.copy(
                     color = MaterialTheme.colorScheme.onSurface
                 ),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.primary),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(LocalAccentColor.current),
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 6.dp),
@@ -321,14 +323,15 @@ private fun SearchPill(
                     .padding(horizontal = 6.dp)
                     .clickable { onActiveChange(true) }
             )
+            val accent = LocalAccentColor.current
             Box(
                 Modifier
                     .size(38.dp)
                     .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)),
+                    .background(accent.copy(alpha = 0.16f)),
                 contentAlignment = Alignment.Center
             ) {
-                FgIcon(FgIcons.Search, null, size = 20.dp)
+                FgIcon(FgIcons.Search, null, size = 20.dp, tint = accent)
             }
         }
     }
@@ -336,6 +339,8 @@ private fun SearchPill(
 
 @Composable
 private fun AppBottomBar(selected: Int, onSelect: (Int) -> Unit) {
+    val accent = LocalAccentColor.current
+    val chipShape = tabChipShapeFor(LocalTabChipShape.current)
     NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
         tabs.forEachIndexed { index, spec ->
             val progress by animateFloatAsState(
@@ -350,15 +355,15 @@ private fun AppBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                     Box(
                         Modifier
                             .size(46.dp)
-                            .clip(RoundedCornerShape(14.dp))
+                            .clip(chipShape)
                             .background(
-                                MaterialTheme.colorScheme.primary.copy(
+                                accent.copy(
                                     alpha = (0.10f + 0.10f * progress)
                                 )
                             ),
                         contentAlignment = Alignment.Center
                     ) {
-                        FgIcon(spec.icon, null, size = 24.dp)
+                        FgIcon(spec.icon, null, size = 24.dp, tint = accent)
                     }
                 },
                 label = {
@@ -371,8 +376,8 @@ private fun AppBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                    selectedIconColor = accent,
+                    selectedTextColor = accent,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     indicatorColor = MaterialTheme.colorScheme.surface
@@ -385,10 +390,7 @@ private fun AppBottomBar(selected: Int, onSelect: (Int) -> Unit) {
 @Composable
 private fun PushedContent(dest: Pushed, onPop: () -> Unit, onPush: (Pushed) -> Unit) {
     when (dest) {
-        Pushed.Notifications -> UsageNotificationsScreen(onBack = onPop)
-        Pushed.Categories -> CategoriesScreen(onBack = onPop, onOpenHidden = { onPush(Pushed.HiddenApps) })
-        Pushed.HiddenApps -> HiddenAppsScreen(onBack = onPop)
-        Pushed.Settings -> SettingsScreen()
+        Pushed.Settings -> SettingsScreen(onBack = onPop)
         Pushed.AddLimit -> AddLimitScreen(onBack = onPop)
         Pushed.BlockKeywords -> BlockKeywordsScreen(onBack = onPop)
         is Pushed.AppDetail -> dev.opensource.focusguard.ui.stats.AppDetailScreen(

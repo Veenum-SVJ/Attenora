@@ -31,6 +31,21 @@ object FgColors {
         Color(0xFFE8D05F), Color(0xFF9B8AFB), Color(0xFF8A93A6)
     )
     fun chartColor(index: Int): Color = Chart[index % Chart.size]
+
+    // In-app icon accent choices: [main, deep] pairs, index-matched to the
+    // launcher icon themes so both pickers feel like one system.
+    val AccentChoices = listOf(
+        Lavender to LavenderDeep,
+        Color(0xFF6FB3F2) to Color(0xFF4A8FE0),
+        Color(0xFF7FD1B9) to Color(0xFF5BB89E),
+        Color(0xFFF2A65A) to Color(0xFFE08D3E),
+        Color(0xFFF25F5C) to Color(0xFFD94A4A),
+        Color(0xFFF2F1F7) to Color(0xFFB8B5C4)
+    )
+    val AccentNames = listOf("Lavender", "Sky", "Mint", "Amber", "Rose", "Mono")
+
+    fun accentColor(index: Int): Color = AccentChoices[index.coerceIn(0, AccentChoices.size - 1)].first
+    fun accentDeep(index: Int): Color = AccentChoices[index.coerceIn(0, AccentChoices.size - 1)].second
 }
 
 private val DarkColors = darkColorScheme(

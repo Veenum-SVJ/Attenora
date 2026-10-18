@@ -27,6 +27,7 @@ object Notifier {
 
     private const val ID_ASSISTANT = 4100
     private const val ID_TOTAL10 = 4200
+    private const val ID_FOCUS = 4300
 
     @Volatile private var lastTotal10At = 0L
     private const val TOTAL10_INTERVAL_MS = 10 * 60_000L
@@ -124,6 +125,33 @@ object Notifier {
             }
         } else {
             nm.cancel(ID_TOTAL10)
+        }
+    }
+
+    /**
+     * Ongoing focus-session notification. The system chronometer counts down
+     * to [endMs] by itself — no timers or refreshes on our side.
+     */
+    fun focusSession(context: Context, endMs: Long) {
+        if (!canPost(context)) return
+        ensureChannels(context)
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        val at = java.time.Instant.ofEpochMilli(endMs).atZone(java.time.ZoneId.systemDefault())
+        val notification = base(context, CHANNEL_ASSISTANT)
+            .setContentTitle("Focus session")
+            .setContentText("Everything unlocks at %02d:%02d".format(at.hour, at.minute))
+            .setWhen(endMs)
+            .setUsesChronometer(true)
+            .setChronometerCountDown(true)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .build()
+        nm.notify(ID_FOCUS, notification)
+    }
+
+    fun cancelFocusSession(context: Context) {
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)?.cancel(ID_FOCUS)
         }
     }
 

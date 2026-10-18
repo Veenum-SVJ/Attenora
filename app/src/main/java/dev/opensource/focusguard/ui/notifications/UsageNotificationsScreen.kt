@@ -75,15 +75,24 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
     val muteBlocked by settings.muteBlocked.collectAsState(initial = false)
 
     var notifPermission by remember { mutableStateOf(hasNotificationPermission(context)) }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> notifPermission = granted }
+
+    // The system dialog changes the permission; re-read it when we come back.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                notifPermission = hasNotificationPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     var timeTarget by remember { mutableStateOf<String?>(null) } // which time row is picking
 
     LaunchedEffect(Unit) {
         if (!notifPermission) {
-            permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            dev.opensource.focusguard.ui.common.requestNotificationPermission(context)
         }
     }
 
@@ -113,7 +122,7 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
                     }
                     Spacer(Modifier.width(8.dp))
                     OutlinedButton(onClick = {
-                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        dev.opensource.focusguard.ui.common.requestNotificationPermission(context)
                     }) { Text("Allow") }
                 }
             }

@@ -2,8 +2,6 @@ package dev.opensource.focusguard.ui.onboarding
 
 import android.content.Intent
 import android.provider.Settings
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -40,10 +39,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import dev.opensource.focusguard.enforcement.AppMonitorService
+import dev.opensource.focusguard.enforcement.FocusGuardAccessibilityService
 import dev.opensource.focusguard.ui.common.hasNotificationPermission
 import dev.opensource.focusguard.ui.common.hasUsageAccess
 import dev.opensource.focusguard.ui.common.isAccessibilityServiceEnabled
+import dev.opensource.focusguard.ui.common.requestNotificationPermission
 import kotlinx.coroutines.launch
 
 private const val TOTAL_STEPS = 4
@@ -57,7 +57,7 @@ fun OnboardingScreen() {
     var step by rememberSaveable { mutableIntStateOf(0) }
     var usageGranted by remember { mutableStateOf(hasUsageAccess(context)) }
     var monitorOn by remember {
-        mutableStateOf(isAccessibilityServiceEnabled(context, AppMonitorService::class.java))
+        mutableStateOf(isAccessibilityServiceEnabled(context, FocusGuardAccessibilityService::class.java))
     }
     var notifGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
     var showDisclosure by remember { mutableStateOf(false) }
@@ -67,7 +67,7 @@ fun OnboardingScreen() {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 usageGranted = hasUsageAccess(context)
-                monitorOn = isAccessibilityServiceEnabled(context, AppMonitorService::class.java)
+                monitorOn = isAccessibilityServiceEnabled(context, FocusGuardAccessibilityService::class.java)
                 notifGranted = hasNotificationPermission(context)
             }
         }
@@ -75,13 +75,10 @@ fun OnboardingScreen() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    val notifLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted -> notifGranted = granted }
-
     Column(
         Modifier
             .fillMaxSize()
+            .statusBarsPadding() // keeps the progress bar out of the status bar / cutout
             .verticalScroll(rememberScrollState())
             .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -96,7 +93,9 @@ fun OnboardingScreen() {
             1 -> UsageAccessStep(usageGranted) {
                 context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             }
-            2 -> NotificationStep(notifGranted) { notifLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS) }
+            2 -> NotificationStep(notifGranted) {
+                requestNotificationPermission(context)
+            }
             else -> MonitorStep(monitorOn) { showDisclosure = true }
         }
 
@@ -129,11 +128,11 @@ fun OnboardingScreen() {
             text = {
                 Text(
                     "Android requires this explanation before enabling an accessibility service.\n\n" +
-                        "FocusGuard's \"App monitor\" service only reports which app comes to the " +
-                        "foreground. That lets it count screen time and show your blocking screen " +
-                        "at the right moment. It does not read what you type, does not read other " +
-                        "apps' contents, and makes no network requests — FocusGuard has no internet " +
-                        "access at all.\n\n" +
+                        "FocusGuard uses one service to count screen time and show your blocking " +
+                        "screen, check browser address bars for website blocking, and hide the " +
+                        "in-app elements you chose (like Shorts or Reels). It reads nothing from " +
+                        "keyboards or passwords and makes no network requests — FocusGuard has no " +
+                        "internet access at all.\n\n" +
                         "You can disable it any time in Settings → Accessibility."
                 )
             },
@@ -152,18 +151,17 @@ fun OnboardingScreen() {
 
 @Composable
 private fun WelcomeStep() {
-    StepTitle("Take back your focus")
+    val context = LocalContext.current
+    val version = remember {
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        }.getOrNull()?.let { "v$it" } ?: "v1.1.0"
+    }
+    StepTitle("FocusGuard $version")
     Text(
-        "FocusGuard tracks how long you use each app, lets you set daily limits, " +
-            "blocks distracting apps on schedule, and can block websites in your browser.",
-        style = MaterialTheme.typography.bodyLarge
-    )
-    Text(
-        "• Fully offline — no account, no ads, no analytics, no internet permission\n" +
-            "• Uninstalling removes every trace: no background processes survive\n" +
-            "• Battery-friendly: nothing polls; the app wakes only when you switch apps",
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        "Fully offline · no ads · no account",
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary
     )
 }
 
@@ -206,17 +204,17 @@ private fun NotificationStep(granted: Boolean, onRequest: () -> Unit) {
 
 @Composable
 private fun MonitorStep(enabled: Boolean, onEnable: () -> Unit) {
-    StepTitle("App monitoring service")
+    StepTitle("Accessibility service")
     Text(
         "To show the blocking screen the moment a limit is reached, FocusGuard needs " +
-            "its lightweight accessibility service. It only sees which app is open — " +
-            "never what's on screen.",
+            "its accessibility service. The same service powers website blocking and " +
+            "in-app blocking, so you only enable it once.",
         style = MaterialTheme.typography.bodyMedium
     )
     if (enabled) {
-        Text("✓ App monitoring enabled", color = MaterialTheme.colorScheme.primary)
+        Text("✓ Accessibility enabled", color = MaterialTheme.colorScheme.primary)
     } else {
-        Button(onClick = onEnable) { Text("Enable app monitoring") }
+        Button(onClick = onEnable) { Text("Enable accessibility") }
         Spacer(Modifier.height(4.dp))
         Text(
             "You can finish setup without it, but blocking won't work until it's on.",

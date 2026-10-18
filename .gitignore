@@ -13,3 +13,8 @@ captures
 *.aab
 keystore.properties
 .freebuff/
+
+# local/debug-only & generated artifacts
+.android/
+test-report/
+/docs/assets/

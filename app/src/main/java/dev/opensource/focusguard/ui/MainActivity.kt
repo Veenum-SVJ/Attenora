@@ -10,20 +10,46 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.fragment.app.FragmentActivity
 import dev.opensource.focusguard.FocusApp
+import dev.opensource.focusguard.data.AppIconShape
+import dev.opensource.focusguard.data.TabChipShape
 import dev.opensource.focusguard.data.ThemeMode
+import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.LocalAppContainer
+import dev.opensource.focusguard.ui.common.LocalAppIconShape
+import dev.opensource.focusguard.ui.common.LocalTabChipShape
+import dev.opensource.focusguard.ui.theme.FgColors
 import dev.opensource.focusguard.ui.lock.LockGate
 import dev.opensource.focusguard.ui.theme.FocusGuardTheme
 
 class MainActivity : FragmentActivity() {
 
     private val unlocked = mutableStateOf(false)
+    private var firstFrameLogged = false
+    private val startT0 = android.os.SystemClock.elapsedRealtime()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val t0 = android.os.SystemClock.elapsedRealtime()
         enableEdgeToEdge()
         val container = (application as FocusApp).container
+        android.util.Log.d("FGSTART", "activity onCreate: ${android.os.SystemClock.elapsedRealtime() - t0}ms")
         setContent {
+            androidx.compose.runtime.LaunchedEffect(Unit) {
+                androidx.compose.runtime.withFrameNanos { }
+                android.util.Log.d(
+                    "FGSTART",
+                    "first frame drawn: ${android.os.SystemClock.elapsedRealtime() - startT0}ms"
+                )
+            }
+            androidx.compose.runtime.SideEffect {
+                if (!firstFrameLogged) {
+                    firstFrameLogged = true
+                    android.util.Log.d(
+                        "FGSTART",
+                        "first composition: ${android.os.SystemClock.elapsedRealtime() - startT0}ms"
+                    )
+                }
+            }
             CompositionLocalProvider(LocalAppContainer provides container) {
                 val themeMode by container.settings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
                 val darkTheme = when (themeMode) {
@@ -31,8 +57,18 @@ class MainActivity : FragmentActivity() {
                     ThemeMode.LIGHT -> false
                     else -> isSystemInDarkTheme()
                 }
-                FocusGuardTheme(darkTheme = darkTheme) {
-                    LockGate(unlocked = unlocked, onUnlock = { unlocked.value = true })
+                val accentIdx by container.settings.iconAccent.collectAsState(initial = 0)
+                val appIconShp by container.settings.appIconShape.collectAsState(initial = AppIconShape.ROUNDED)
+                val tabChipShp by container.settings.tabChipShape.collectAsState(initial = TabChipShape.ROUNDED)
+
+                CompositionLocalProvider(
+                    LocalAccentColor provides FgColors.accentColor(accentIdx),
+                    LocalAppIconShape provides appIconShp,
+                    LocalTabChipShape provides tabChipShp
+                ) {
+                    FocusGuardTheme(darkTheme = darkTheme) {
+                        LockGate(unlocked = unlocked, onUnlock = { unlocked.value = true })
+                    }
                 }
             }
         }

@@ -4,9 +4,11 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import dev.opensource.focusguard.domain.ResetEngine
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -81,7 +83,7 @@ class UsageRepository(
         return db.elementUsageDao().sum(domain, WEB_ELEMENT, day, day) ?: 0L
     }
 
-    /** Credits attributed website foreground time (called by WebBlockService). */
+    /** Credits attributed website foreground time (called by the accessibility service). */
     suspend fun creditWebsite(domain: String, ms: Long, now: Long = clock()) {
         if (domain.isBlank() || ms <= 0L) return
         val day = ResetEngine.dayKey(now, resetHourProvider())
@@ -101,8 +103,14 @@ class UsageRepository(
         return db.dailyUsageDao().range(end.minusDays(RETENTION_DAYS).toString(), end.toString())
     }
 
-    /** Consumes new UsageStats events since the checkpoint into daily rollups. */
-    suspend fun reconcileNow() = mutex.withLock {
+    /**
+     * Consumes new UsageStats events since the checkpoint into daily rollups.
+     * Dispatched off the main thread: queryEvents() is a Binder IPC that can
+     * return thousands of events, and scanning it on the main thread makes the
+     * dashboard feel laggy on open.
+     */
+    suspend fun reconcileNow() = withContext(Dispatchers.IO) {
+        mutex.withLock {
         val now = clock()
         val rawCursor = db.metaDao().get(KEY_CURSOR)?.toLongOrNull() ?: (now - FIRST_RUN_LOOKBACK_MS)
         val start = rawCursor.coerceIn(0L, now)
@@ -181,5 +189,6 @@ class UsageRepository(
         db.metaDao().put(MetaEntry(KEY_CURSOR, now.toString()))
         db.dailyUsageDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
         db.hourlyUsageDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
+        }
     }
 }

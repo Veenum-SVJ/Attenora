@@ -2,14 +2,8 @@
 <resources>
     <string name="app_name">FocusGuard</string>
 
-    <string name="a11y_monitor_label">FocusGuard app monitor</string>
-    <string name="a11y_monitor_desc">Lets FocusGuard notice which app is in the foreground so it can count screen time accurately and show the blocking screen when you reach a limit you set, or when a focus schedule is active. FocusGuard only reads which app is open — it never reads what you type or the contents of a screen. It does not run any background polling and performs no network activity.</string>
-
-    <string name="a11y_web_label">FocusGuard website blocking</string>
-    <string name="a11y_web_desc">Optional. Only enable this if you use website blocking. It lets FocusGuard check the address shown in your browser against your personal blocklist and show the blocking screen when a blocked site is open. It reads the address bar of browser apps only, never other apps, and stores nothing on the network — FocusGuard has no network access at all.</string>
-
-    <string name="a11y_element_label">FocusGuard in-app blocking</string>
-    <string name="a11y_element_desc">Optional. Only enable this if you use In-App Blocking or the floating countdown. For apps you opt into, it checks the visible screen for elements you chose to hide (for example Shorts or Reels), covers them or navigates away, and can show a small countdown while a limited app is open. It ignores every other app, reads nothing from keyboards or passwords, stores nothing on the network — FocusGuard has no network access at all.</string>
+    <string name="a11y_focusguard_label">FocusGuard</string>
+    <string name="a11y_focusguard_desc">Lets FocusGuard notice which app is open so it can count screen time and show the blocking screen when you hit a limit. It also checks your browser address bar for website blocking, and — only for apps you opt into — hides the parts you chose (for example Shorts or Reels). It reads nothing from keyboards or passwords and stores nothing on the network.</string>
 
     <string name="mute_listener_label">FocusGuard block notifications</string>
 </resources>

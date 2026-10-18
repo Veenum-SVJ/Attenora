@@ -376,3 +376,139 @@ class ClassifierTest {
         assertTrue(CategoryClassifier.classify("x.y.z", "q") in CategoryClassifier.defaultOrder)
     }
 }
+
+class UnlockEngineTest {
+
+    private val utc = ZoneId.of("UTC")
+    private val now = 1_760_000_000_000L // fixed instant for deterministic day keys
+
+    @Test
+    fun `delay is clamped between zero and sixty`() {
+        assertEquals(0, UnlockEngine.clampDelaySeconds(-5))
+        assertEquals(60, UnlockEngine.clampDelaySeconds(500))
+        assertEquals(15, UnlockEngine.clampDelaySeconds(15))
+    }
+
+    @Test
+    fun `quota 0 means unlimited`() {
+        assertTrue(
+            UnlockEngine.canUnlock(now, usedDay = "whatever", usedCount = 999, quota = 0, resetHour = 0, zone = utc)
+        )
+    }
+
+    @Test
+    fun `quota blocks at the limit on the same day`() {
+        val today = ResetEngine.dayKey(now, 0, utc)
+        assertTrue(UnlockEngine.canUnlock(now, today, 2, 3, 0, utc))
+        assertFalse(UnlockEngine.canUnlock(now, today, 3, 3, 0, utc))
+    }
+
+    @Test
+    fun `a stale usage-day key resets the count`() {
+        assertTrue(UnlockEngine.canUnlock(now, "2000-01-01", 50, 1, 0, utc))
+    }
+
+    @Test
+    fun `recordUnlock increments within the day`() {
+        val today = ResetEngine.dayKey(now, 0, utc)
+        val (day, count) = UnlockEngine.recordUnlock(now, today, 2, 3, 0, utc)
+        assertEquals(today, day)
+        assertEquals(3, count)
+    }
+
+    @Test
+    fun `recordUnlock rolls a stale counter onto today`() {
+        val (day, count) = UnlockEngine.recordUnlock(now, "2000-01-01", 50, 3, 0, utc)
+        assertEquals(ResetEngine.dayKey(now, 0, utc), day)
+        assertEquals(1, count)
+    }
+
+    @Test
+    fun `reset hour shifts the day boundary`() {
+        val twoAm = java.time.LocalDateTime.of(2026, 10, 17, 2, 0)
+            .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+        val tenAm = java.time.LocalDateTime.of(2026, 10, 17, 10, 0)
+            .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+        // With a 03:00 reset, 02:00 still belongs to the previous usage day.
+        assertEquals("2026-10-16", ResetEngine.dayKey(twoAm, 3, utc))
+        assertEquals("2026-10-17", ResetEngine.dayKey(tenAm, 3, utc))
+    }
+}
+
+class FocusSessionEngineTest {
+
+    private val utc = ZoneId.of("UTC")
+
+    private fun at(h: Int, m: Int): Long =
+        java.time.LocalDateTime.of(2026, 10, 17, h, m)
+            .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+
+    @Test
+    fun `accrued today is zero after a day rollover`() {
+        val accrual = FocusSessionEngine.Accrual("2026-10-16", 45)
+        val sameDay = java.time.LocalDateTime.of(2026, 10, 16, 23, 59)
+            .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+        val nextDay = java.time.LocalDateTime.of(2026, 10, 18, 10, 0)
+            .toInstant(java.time.ZoneOffset.UTC).toEpochMilli()
+        assertEquals(0, FocusSessionEngine.accruedToday(accrual, at(12, 0), 0, utc))
+        assertEquals(45, FocusSessionEngine.accruedToday(accrual, sameDay, 0, utc))
+        assertEquals(0, FocusSessionEngine.accruedToday(accrual, nextDay, 0, utc))
+    }
+
+    @Test
+    fun `finished session accrues whole minutes on its start day`() {
+        val start = at(9, 0)
+        val end = start + 25 * 60_000L + 30_000L
+        val next = FocusSessionEngine.accrue(
+            FocusSessionEngine.empty, FocusSessionEngine.Session(start, end), end, 0, utc
+        )
+        assertEquals("2026-10-17", next.dayKey)
+        assertEquals(25, next.minutes)
+    }
+
+    @Test
+    fun `early end accrues only time actually spent`() {
+        val start = at(9, 0)
+        val end = start + 30 * 60_000L
+        val now = start + 12 * 60_000L
+        val next = FocusSessionEngine.accrue(
+            FocusSessionEngine.empty, FocusSessionEngine.Session(start, end), now, 0, utc
+        )
+        assertEquals(12, next.minutes)
+    }
+
+    @Test
+    fun `same-day sessions add up`() {
+        val start = at(9, 0)
+        val first = FocusSessionEngine.accrue(
+            FocusSessionEngine.empty, FocusSessionEngine.Session(start, start + 10 * 60_000L),
+            start + 10 * 60_000L, 0, utc
+        )
+        val second = FocusSessionEngine.accrue(
+            first, FocusSessionEngine.Session(start + 60 * 60_000L, start + 75 * 60_000L),
+            start + 75 * 60_000L, 0, utc
+        )
+        assertEquals(25, second.minutes)
+    }
+
+    @Test
+    fun `a session landing on a different day replaces the stale total`() {
+        val start = at(9, 0)
+        val stale = FocusSessionEngine.Accrual("2020-01-01", 999)
+        val next = FocusSessionEngine.accrue(
+            stale, FocusSessionEngine.Session(start, start + 5 * 60_000L),
+            start + 5 * 60_000L, 0, utc
+        )
+        assertEquals("2026-10-17", next.dayKey)
+        assertEquals(5, next.minutes)
+    }
+
+    @Test
+    fun `zero length sessions change nothing`() {
+        val start = at(9, 0)
+        val next = FocusSessionEngine.accrue(
+            FocusSessionEngine.empty, FocusSessionEngine.Session(start, start), start, 0, utc
+        )
+        assertEquals(FocusSessionEngine.empty, next)
+    }
+}

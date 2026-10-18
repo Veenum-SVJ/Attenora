@@ -44,7 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.data.ElementRule
 import dev.opensource.focusguard.enforcement.Detectors
-import dev.opensource.focusguard.enforcement.ElementBlockService
+import dev.opensource.focusguard.enforcement.FocusGuardAccessibilityService
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
 import dev.opensource.focusguard.ui.common.FgIcon
@@ -72,8 +72,25 @@ fun InAppBlockingScreen() {
 
     val rules by container.db.elementRuleDao().observeAll()
         .collectAsState(initial = emptyList())
-    val serviceOn = remember {
-        mutableStateOf(isAccessibilityServiceEnabled(context, ElementBlockService::class.java))
+    var serviceOn by remember {
+        mutableStateOf(isAccessibilityServiceEnabled(context, FocusGuardAccessibilityService::class.java))
+    }
+
+    // Re-check whenever we return from system settings — the service can be
+    // enabled while this screen is stopped, and `remember` alone would keep
+    // showing "off" forever.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    androidx.compose.runtime.DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                serviceOn = isAccessibilityServiceEnabled(
+                    context,
+                    FocusGuardAccessibilityService::class.java
+                )
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
     var expandedApp by remember { mutableStateOf<String?>(null) }
 
@@ -126,16 +143,16 @@ fun InAppBlockingScreen() {
                         Modifier
                             .size(10.dp)
                             .clip(RoundedCornerShape(50))
-                            .background(if (serviceOn.value) Color(0xFF34C77B) else Color(0xFFFF6B6B))
+                            .background(if (serviceOn) Color(0xFF34C77B) else Color(0xFFFF6B6B))
                     )
                     Spacer(Modifier.width(10.dp))
                     Text(
-                        if (serviceOn.value) "Detector service enabled"
-                        else "Detector service is off — element blocking is inactive",
+                        if (serviceOn) "FocusGuard service enabled — element blocking is active"
+                        else "FocusGuard accessibility service is off — element blocking is inactive",
                         style = MaterialTheme.typography.bodySmall,
                         modifier = Modifier.weight(1f)
                     )
-                    if (!serviceOn.value) {
+                    if (!serviceOn) {
                         OutlinedButton(onClick = {
                             runCatching {
                                 context.startActivity(
@@ -249,14 +266,14 @@ fun InAppBlockingScreen() {
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                if (serviceOn.value) "Test: open ${appLabel(context, pkg)} and check that hidden elements stay hidden."
+                                if (serviceOn) "Test: open ${appLabel(context, pkg)} and check that hidden elements stay hidden."
                                 else "Enable the service to test.",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f)
                             )
                             Spacer(Modifier.width(8.dp))
-                            OutlinedButton(enabled = serviceOn.value, onClick = {
+                            OutlinedButton(enabled = serviceOn, onClick = {
                                 runCatching {
                                     context.startActivity(
                                         context.packageManager.getLaunchIntentForPackage(

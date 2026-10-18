@@ -55,6 +55,7 @@ import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.PageHeader
 import dev.opensource.focusguard.ui.common.appLabel
+import dev.opensource.focusguard.enforcement.FocusSession
 import dev.opensource.focusguard.ui.common.formatDuration
 import dev.opensource.focusguard.ui.icons.FgIcons
 import kotlinx.coroutines.launch
@@ -84,16 +85,20 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     var customToKey by rememberSaveable { mutableStateOf("") }
     var showPicker by remember { mutableStateOf(false) }
     var chartStyle by rememberSaveable { mutableStateOf(ChartStyle.BAR) }
-    var categoryFilter by rememberSaveable { mutableStateOf("all") } // "all" or categoryId
-    var setupExpanded by rememberSaveable { mutableStateOf(false) }
     val dismissedTips = remember { androidx.compose.runtime.mutableStateListOf<String>() }
 
     val mondayFirst by container.settings.weekMondayFirst.collectAsState(initial = true)
     val hiddenKeys by container.hiddenKeys.collectAsState()
-    val categories by container.categories.collectAsState()
 
     // Reconcile once when the screen appears (checkpointed delta — cheap).
-    LaunchedEffect(Unit) { runCatching { container.usage.reconcileNow() } }
+    LaunchedEffect(Unit) {
+        val t0 = android.os.SystemClock.elapsedRealtime()
+        runCatching { container.usage.reconcileNow() }
+        android.util.Log.d(
+            "FGSTART",
+            "reconcile: ${android.os.SystemClock.elapsedRealtime() - t0}ms"
+        )
+    }
 
     val todayDate = remember(period, step) { LocalDate.parse(container.usage.todayKey()) }
 
@@ -123,37 +128,32 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     // Rows for the range.
     var rows by remember { mutableStateOf<List<DailyUsage>>(emptyList()) }
     var hourly by remember { mutableStateOf<List<HourTotals>>(emptyList()) }
+    var hourRows by remember { mutableStateOf<List<dev.opensource.focusguard.data.HourlyUsage>>(emptyList()) }
     var webTotal by remember { mutableStateOf(0L) }
 
     LaunchedEffect(range) {
+        val t0 = android.os.SystemClock.elapsedRealtime()
         val fromKey = range.from.toString()
         val toKey = range.to.toString()
         val dao = container.db.dailyUsageDao()
         rows = if (range.single) dao.forDay(fromKey) else dao.range(fromKey, toKey)
         hourly = if (range.single) container.db.hourlyUsageDao().dayTotalsByHour(fromKey) else emptyList()
+        hourRows = if (range.single) emptyList() else container.db.hourlyUsageDao().range(fromKey, toKey)
         webTotal = container.db.elementUsageDao()
             .sumAll("__site__", fromKey, toKey) ?: 0L
-    }
-
-    // Category filter support: which packages are in the chosen category.
-    val memberMap by container.enforcement.categoryMembers.collectAsState()
-    val categoryPkgFilter = remember(categoryFilter, memberMap) {
-        if (categoryFilter == "all") null
-        else {
-            val id = categoryFilter.toLongOrNull() ?: -1L
-            memberMap.filter { it.categoryId == id && it.key.startsWith("app:") }
-                .map { it.key.removePrefix("app:") }.toSet()
-        }
+        android.util.Log.d(
+            "FGSTART",
+            "stats query: ${android.os.SystemClock.elapsedRealtime() - t0}ms"
+        )
     }
 
     val isToday = range.single && range.from.toString() == container.usage.todayKey()
     val grandTotal = remember(rows) { rows.sumOf { it.usedMs } }
 
-    val visibleRows = remember(rows, query, hiddenKeys, categoryFilter, categoryPkgFilter) {
+    val visibleRows = remember(rows, query, hiddenKeys) {
         rows.filter { row ->
             if (row.packageName.startsWith("web:")) return@filter false
             if ("app:${row.packageName}" in hiddenKeys) return@filter false
-            if (categoryPkgFilter != null && row.packageName !in categoryPkgFilter) return@filter false
             if (query.isNotBlank()) {
                 val label = row.packageName.lowercase()
                 if (!label.contains(query.trim().lowercase())) return@filter false
@@ -184,6 +184,38 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
         }
     }
 
+    // Heat grid (day × hour) for the heatmap style.
+    val heatRows = remember(range, hourly, hourRows) {
+        if (range.single) {
+            val arr = LongArray(24)
+            hourly.forEach { arr[it.hour] = it.ms }
+            listOf(HeatRow("this day", arr))
+        } else {
+            (0..(range.to.toEpochDay() - range.from.toEpochDay())).map { off ->
+                val day = range.from.plusDays(off)
+                val arr = LongArray(24)
+                hourRows.filter { it.day == day.toString() }.forEach { arr[it.hour] = it.ms }
+                HeatRow(day.toString().substring(5), arr) // MM-DD
+            }
+        }
+    }
+
+    // Ribbon: per-day top apps + "Other", in display order.
+    val ribbonDays = remember(range, visibleRows) {
+        visibleRows
+            .groupBy { it.day }
+            .toSortedMap()
+            .map { (day, rs) ->
+                val sorted = rs.sortedByDescending { it.usedMs }
+                val top = sorted.take(4).map { appLabel(context, it.packageName) to it.usedMs }
+                val rest = sorted.drop(4).sumOf { it.usedMs }
+                TimelineDay(
+                    label = day.substring(5), // MM-DD
+                    shares = if (rest > 0) top + ("Other" to rest) else top
+                )
+            }
+    }
+
     // Usage patterns (rule-based, dismissible).
     val tips = remember(visibleRows, hourly, grandTotal) {
         val out = ArrayList<Pair<String, String>>()
@@ -210,14 +242,6 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
     ) {
         item { PageHeader("Usage Stats") }
-
-        // Setup banner (only when something is missing).
-        item {
-            SetupBanner(
-                expanded = setupExpanded,
-                onToggle = { setupExpanded = !setupExpanded }
-            )
-        }
 
         // Date stepper + period chips.
         item {
@@ -256,34 +280,34 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
             }
         }
 
+        // Period chips — horizontally scrollable, but visually centred.
         item {
-            Row(
+            Box(
                 Modifier
                     .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(vertical = 4.dp)
             ) {
-                Period.values().forEach { p ->
-                    Chip(
-                        label = p.chip,
-                        selected = period == p,
-                        onClick = {
-                            if (p == Period.CUSTOM) {
-                                showPicker = true
-                            } else {
-                                period = p
-                                step = 0
+                Row(
+                    Modifier
+                        .align(Alignment.Center)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Period.values().forEach { p ->
+                        Chip(
+                            label = p.chip,
+                            selected = period == p,
+                            onClick = {
+                                if (p == Period.CUSTOM) {
+                                    showPicker = true
+                                } else {
+                                    period = p
+                                    step = 0
+                                }
                             }
-                        }
-                    )
+                        )
+                    }
                 }
-                Chip(label = categoryLabel(categories, categoryFilter), selected = categoryFilter != "all", onClick = {
-                    // Cycle: all → each category → all
-                    val ids = categories.map { it.id.toString() }
-                    val idx = ids.indexOf(categoryFilter)
-                    categoryFilter = if (idx == -1) "all" else ids.getOrNull(idx + 1) ?: "all"
-                })
             }
         }
 
@@ -291,21 +315,64 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
         item {
             FgCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Column(Modifier.padding(16.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "Usage Time",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        ChartStyleToggle(chartStyle) { chartStyle = it }
+                    Text(
+                        "Usage Time",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(Modifier.height(10.dp))
+
+                    // Style switcher: full-width segmented control — five
+                    // styles don't fit as bare icons next to the title.
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        listOf(
+                            ChartStyle.BAR to "Bars",
+                            ChartStyle.LINE to "Line",
+                            ChartStyle.DONUT to "Donut",
+                            ChartStyle.HEATMAP to "Heat",
+                            ChartStyle.TIMELINE to "Ribbon"
+                        ).forEach { (s, label) ->
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .background(
+                                        if (chartStyle == s) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                        else androidx.compose.ui.graphics.Color.Transparent
+                                    )
+                                    .clickable { chartStyle = s }
+                                    .padding(vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = if (chartStyle == s) FontWeight.SemiBold else FontWeight.Normal,
+                                    color = if (chartStyle == s) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
                     }
+
                     Spacer(Modifier.height(12.dp))
-                    if (chartBars.isEmpty()) {
+
+                    val noData = when (chartStyle) {
+                        ChartStyle.BAR, ChartStyle.LINE, ChartStyle.DONUT ->
+                            chartBars.none { it.valueMs > 0L }
+                        ChartStyle.HEATMAP -> heatRows.all { r -> r.hours.all { it == 0L } }
+                        ChartStyle.TIMELINE ->
+                            ribbonDays.isEmpty() || ribbonDays.all { d -> d.shares.all { s -> s.second <= 0L } }
+                    }
+                    if (noData) {
                         Box(
                             Modifier
                                 .fillMaxWidth()
-                                .height(160.dp),
+                                .height(230.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
@@ -315,8 +382,14 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                             )
                         }
                     } else {
-                        UsageChart(bars = chartBars, style = chartStyle)
+                        when (chartStyle) {
+                            ChartStyle.BAR, ChartStyle.LINE -> UsageChart(bars = chartBars, style = chartStyle)
+                            ChartStyle.DONUT -> DonutChart(bars = chartBars.filter { it.valueMs > 0L })
+                            ChartStyle.HEATMAP -> HeatmapChart(rows = heatRows)
+                            else -> RibbonChart(days = ribbonDays)
+                        }
                     }
+
                     Spacer(Modifier.height(14.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         LegendDot(MaterialTheme.colorScheme.primary, "Mobile App")
@@ -335,23 +408,31 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    Spacer(Modifier.height(10.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        FgIcon(FgIcons.Eye, null, size = 20.dp)
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            "Total Usage: ",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+
+                    // Total and focus sit tight together: icon, label and
+                    // value are one left-aligned unit — no edge-to-edge row.
+                    Spacer(Modifier.height(8.dp))
+                    StatLine(
+                        icon = FgIcons.Eye,
+                        label = "Total usage",
+                        value = if (displayTotal <= 0) "0m" else formatDuration(displayTotal)
+                    )
+                    if (isToday) {
+                        var focusedToday by remember { mutableIntStateOf(-1) }
+                        LaunchedEffect(Unit) {
+                            runCatching {
+                                // Fold a session that just ended, then read today's total.
+                                FocusSession.finalize(container)
+                                focusedToday = FocusSession.accruedTodayMinutes(container)
+                            }
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        StatLine(
+                            icon = FgIcons.Stopwatch,
+                            label = "Focused today",
+                            value = if (focusedToday <= 0) "0m"
+                            else formatDuration(focusedToday * 60_000L)
                         )
-                        Text(
-                            if (displayTotal <= 0) "0m" else formatDuration(displayTotal),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        FgIcon(FgIcons.ArrowRight, null, size = 18.dp)
                     }
                 }
             }
@@ -435,10 +516,29 @@ private fun rangeLabel(range: Range, today: LocalDate): String = when {
     else -> "${DateTimeFormatter.ofPattern("MMM d").format(range.from)} – ${DateTimeFormatter.ofPattern("MMM d").format(range.to)}"
 }
 
-private fun categoryLabel(categories: List<dev.opensource.focusguard.data.Category>, filter: String): String =
-    if (filter == "all") "All Categories"
-    else categories.firstOrNull { it.id.toString() == filter }?.name ?: "All Categories"
-
+@Composable
+private fun StatLine(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FgIcon(icon, null, size = 18.dp)
+        Spacer(Modifier.width(8.dp))
+        Text(
+            "$label:",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(
+            value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary
+        )
+    }
+}
 @Composable
 private fun StepButton(icon: androidx.compose.ui.graphics.vector.ImageVector, rotated: Boolean = false, onClick: () -> Unit) {
     Box(
@@ -492,29 +592,6 @@ private fun LegendDot(color: androidx.compose.ui.graphics.Color, label: String) 
     Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
-@Composable
-private fun ChartStyleToggle(style: ChartStyle, onChange: (ChartStyle) -> Unit) {
-    Row(
-        Modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
-    ) {
-        listOf(ChartStyle.BAR to FgIcons.ChartBar, ChartStyle.LINE to FgIcons.ChartLine).forEach { (s, icon) ->
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .background(
-                        if (style == s) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                        else androidx.compose.ui.graphics.Color.Transparent
-                    )
-                    .clickable { onChange(s) },
-                contentAlignment = Alignment.Center
-            ) {
-                FgIcon(icon, null, size = 20.dp)
-            }
-        }
-    }
-}
 
 @Composable
 private fun AppUsageRow(pkg: String, ms: Long, share: Float, onClick: () -> Unit) {
@@ -564,61 +641,6 @@ private fun AppUsageRow(pkg: String, ms: Long, share: Float, onClick: () -> Unit
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-        }
-    }
-}
-
-@Composable
-private fun SetupBanner(expanded: Boolean, onToggle: () -> Unit) {
-    val container = LocalAppContainer.current
-    val context = LocalContext.current
-    val usageOk = remember { dev.opensource.focusguard.ui.common.hasUsageAccess(context) }
-    val monitorOk = remember {
-        dev.opensource.focusguard.ui.common.isAccessibilityServiceEnabled(
-            context, dev.opensource.focusguard.enforcement.AppMonitorService::class.java
-        )
-    }
-    val notifOk = remember { dev.opensource.focusguard.ui.common.hasNotificationPermission(context) }
-    val missing = listOf(
-        Triple("Usage access", usageOk, true),
-        Triple("App monitor service", monitorOk, false),
-        Triple("Notifications", notifOk, false)
-    ).filter { !it.second }
-
-    if (missing.isEmpty()) return
-
-    FgCard(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
-        Column(Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Complete FocusGuard Setup (${3 - missing.size}/3)",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f)
-                )
-                TextButton(onClick = onToggle) {
-                    Text(if (expanded) "Hide" else "Show", color = MaterialTheme.colorScheme.primary)
-                    Spacer(Modifier.width(4.dp))
-                    FgIcon(if (expanded) FgIcons.ChevronUp else FgIcons.ChevronDown, null, size = 16.dp)
-                }
-            }
-            if (expanded) {
-                missing.forEach { (label, _, isUsage) ->
-                    dev.opensource.focusguard.ui.common.PermissionRow(
-                        title = label,
-                        granted = false,
-                        actionLabel = "Fix",
-                        onClick = {
-                            val intent = if (isUsage) {
-                                android.content.Intent(android.provider.Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                            } else {
-                                android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                            }
-                            runCatching { context.startActivity(intent) }
-                        }
-                    )
-                }
-            }
         }
     }
 }

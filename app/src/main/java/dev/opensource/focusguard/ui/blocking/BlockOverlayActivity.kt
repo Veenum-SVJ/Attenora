@@ -23,8 +23,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -32,8 +34,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.FocusApp
 import dev.opensource.focusguard.data.FocusSchedule
+import dev.opensource.focusguard.data.UnlockChallenge
+import dev.opensource.focusguard.enforcement.Notifier
 import dev.opensource.focusguard.ui.common.appLabel
 import dev.opensource.focusguard.ui.theme.FocusGuardTheme
+import kotlinx.coroutines.flow.first
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -127,6 +132,37 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?) {
         }
     }
 
+    // What it takes to end an active focus session early (Curbox-style):
+    // only offered when an unlock challenge is configured — otherwise the
+    // overlay stays a hard stop, same as before.
+    val unlockType by produceState<String?>(initialValue = null) {
+        value = container.settings.unlockChallenge.first()
+    }
+    val intentLast by produceState(initialValue = "") {
+        value = container.settings.intentLast.first()
+    }
+    var showEndChallenge by remember { mutableStateOf(false) }
+    val canEndEarly = reason == BlockOverlayActivity.REASON_BLOCK_ALL &&
+        unlockType != null &&
+        unlockType != UnlockChallenge.OFF &&
+        unlockType != UnlockChallenge.NONE
+
+    if (showEndChallenge && unlockType != null) {
+        UnlockChallengeDialog(
+            type = unlockType!!,
+            lastIntent = intentLast,
+            onPass = { intent ->
+                if (intent.isNotBlank()) {
+                    container.settings.setIntent(intent, System.currentTimeMillis())
+                }
+                container.settings.setBlockAllUntil(0L)
+                Notifier.cancelFocusSession(context)
+                showEndChallenge = false
+            },
+            onCancel = { showEndChallenge = false }
+        )
+    }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -184,6 +220,13 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?) {
             },
             modifier = Modifier.fillMaxWidth()
         ) { Text("Open FocusGuard") }
+        if (canEndEarly) {
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = { showEndChallenge = true },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("End focus session early…") }
+        }
     }
 }
 

@@ -27,11 +27,13 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -46,19 +48,42 @@ val LocalAppContainer = androidx.compose.runtime.compositionLocalOf<AppContainer
     error("AppContainer not provided")
 }
 
+/** Accent color for nav/drawer icon chips and their icons. */
+val LocalAccentColor = compositionLocalOf { dev.opensource.focusguard.ui.theme.FgColors.Lavender }
+
+/** Mask applied to per-app icons in lists. */
+val LocalAppIconShape = compositionLocalOf { dev.opensource.focusguard.data.AppIconShape.ROUNDED }
+
+/** Shape of the bottom-nav icon chips. */
+val LocalTabChipShape = compositionLocalOf { dev.opensource.focusguard.data.TabChipShape.ROUNDED }
+
+fun appIconShapeFor(shape: String, size: Dp): Shape = when (shape) {
+    dev.opensource.focusguard.data.AppIconShape.CIRCLE -> CircleShape
+    dev.opensource.focusguard.data.AppIconShape.SQUARE -> RoundedCornerShape(0.dp)
+    dev.opensource.focusguard.data.AppIconShape.SQUIRCLE -> RoundedCornerShape(size * 0.30f)
+    else -> RoundedCornerShape(size * 0.22f)
+}
+
+fun tabChipShapeFor(shape: String): Shape = when (shape) {
+    dev.opensource.focusguard.data.TabChipShape.CIRCLE -> CircleShape
+    dev.opensource.focusguard.data.TabChipShape.PILL -> RoundedCornerShape(50)
+    else -> RoundedCornerShape(14.dp)
+}
+
 /** Custom outline icon, tinted with the current content color. */
 @Composable
 fun FgIcon(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     contentDescription: String?,
     modifier: Modifier = Modifier,
-    size: Dp = 24.dp
+    size: Dp = 24.dp,
+    tint: Color = androidx.compose.material3.LocalContentColor.current
 ) {
     androidx.compose.material3.Icon(
         imageVector = icon,
         contentDescription = contentDescription,
         modifier = modifier.size(size),
-        tint = androidx.compose.material3.LocalContentColor.current
+        tint = tint
     )
 }
 
@@ -96,16 +121,29 @@ fun appLabel(context: Context, pkg: String): String = labelCache.getOrPut(pkg) {
     }.getOrDefault(pkg)
 }
 
+/** Process-wide icon cache: decoding a Drawable on every recomposition is a
+ *  reliable source of scroll jank (allocation + GPU upload per frame). */
+private val iconCache = ConcurrentHashMap<String, android.graphics.Bitmap?>()
+
+fun appIconBitmap(context: Context, pkg: String): android.graphics.Bitmap? {
+    if (iconCache.size > 256) iconCache.clear()
+    return iconCache.computeIfAbsent(pkg) {
+        runCatching {
+            context.packageManager.getApplicationIcon(pkg).toBitmap()
+        }.getOrNull()
+    }
+}
+
 @Composable
 fun AppIcon(packageName: String, size: Dp = 36.dp, modifier: Modifier = Modifier) {
-    val pm = LocalContext.current.packageManager
-    val icon: Drawable? = remember(packageName) {
-        runCatching { pm.getApplicationIcon(packageName) }.getOrNull()
+    val context = LocalContext.current
+    val icon: android.graphics.Bitmap? = remember(packageName) {
+        appIconBitmap(context, packageName)
     }
-    val shape = RoundedCornerShape(size * 0.22f)
+    val shape = appIconShapeFor(LocalAppIconShape.current, size)
     if (icon != null) {
         Image(
-            bitmap = icon.toBitmap().asImageBitmap(),
+            bitmap = icon.asImageBitmap(),
             contentDescription = null,
             modifier = modifier.size(size).clip(shape)
         )
@@ -139,6 +177,60 @@ fun SectionCard(
             )
             Spacer(Modifier.size(12.dp))
             content()
+        }
+    }
+}
+
+/**
+ * SectionCard whose title row toggles the content in place. Border kept so
+ * every block reads as its own rectangle.
+ */
+@Composable
+fun CollapsibleSectionCard(
+    title: String,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    trailing: (@Composable () -> Unit)? = null,
+    content: @Composable () -> Unit
+) {
+    OutlinedCard(
+        modifier = modifier.fillMaxWidth(),
+        colors = CardDefaults.outlinedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = androidx.compose.material3.CardDefaults.outlinedCardBorder()
+    ) {
+        androidx.compose.foundation.layout.Column {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(onClick = onToggle)
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f)
+                )
+                trailing?.invoke()
+                Spacer(Modifier.width(8.dp))
+                FgIcon(
+                    if (expanded) dev.opensource.focusguard.ui.icons.FgIcons.ChevronUp
+                    else dev.opensource.focusguard.ui.icons.FgIcons.ChevronDown,
+                    if (expanded) "Collapse" else "Expand",
+                    size = 20.dp
+                )
+            }
+            if (expanded) {
+                androidx.compose.material3.HorizontalDivider(
+                    color = MaterialTheme.colorScheme.outlineVariant
+                )
+                androidx.compose.foundation.layout.Column(Modifier.padding(16.dp)) {
+                    content()
+                }
+            }
         }
     }
 }
@@ -206,6 +298,46 @@ fun hasNotificationPermission(context: Context): Boolean =
     Build.VERSION.SDK_INT < 33 ||
         context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
         PackageManager.PERMISSION_GRANTED
+
+private const val NOTIF_PERMISSION_REQ_CODE = 41
+
+/** Walks the wrapper chain to find the hosting Activity (if any). */
+fun Context.findActivity(): android.app.Activity? {
+    var ctx: Context = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is android.app.Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
+/**
+ * Ask for POST_NOTIFICATIONS with an explicit, small request code.
+ *
+ * `rememberLauncherForActivityResult` on a FragmentActivity can hand the
+ * permission request a code outside the lower 16 bits, which makes Android
+ * throw "Can only use lower 16 bits for requestCode" and kill the app — this
+ * is the crash behind the old onboarding "Allow notifications" error.
+ * Callers re-read [hasNotificationPermission] on ON_RESUME, which is when the
+ * system dialog has finished.
+ */
+fun requestNotificationPermission(context: Context) {
+    if (Build.VERSION.SDK_INT < 33) return
+    val activity = context.findActivity()
+    if (activity != null) {
+        runCatching {
+            androidx.core.app.ActivityCompat.requestPermissions(
+                activity,
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                NOTIF_PERMISSION_REQ_CODE
+            )
+        }
+    } else {
+        runCatching {
+            context.startActivity(android.content.Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS))
+        }
+    }
+}
 
 // ---- v1.1 shared row components -------------------------------------------
 
