@@ -373,8 +373,7 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                         // Style switcher: four tiny icons tucked into the right
                         // edge of the title row — no full-width segmented bar.
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(2.dp)
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             ChartStyleChip(FgIcons.ChartBar, "Bars", chartStyle == ChartStyle.BAR) {
                                 chartStyle = ChartStyle.BAR
@@ -532,7 +531,7 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 Box(
                     Modifier
-                        .size(34.dp)
+                        .size(48.dp)
                         .clip(RoundedCornerShape(50))
                         .background(MaterialTheme.colorScheme.surface)
                         .clickable { sortDesc = !sortDesc },
@@ -662,24 +661,33 @@ private fun ChartStyleChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    // The visual chip is 32dp, but the touch target is a full 48dp: Android's
+    // minimum, and the icons sit close enough that a 32dp hit area would be a
+    // miss-tap farm.
     Box(
         Modifier
-            .size(30.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(
-                if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                else androidx.compose.ui.graphics.Color.Transparent
-            )
+            .size(48.dp)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
-        FgIcon(
-            icon,
-            if (selected) "$name chart, selected" else "$name chart",
-            size = 17.dp,
-            tint = if (selected) MaterialTheme.colorScheme.primary
-            else MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Box(
+            Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(
+                    if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    else androidx.compose.ui.graphics.Color.Transparent
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            FgIcon(
+                icon,
+                if (selected) "$name chart, selected" else "$name chart",
+                size = 17.dp,
+                tint = if (selected) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
     }
 }
 
@@ -687,7 +695,7 @@ private fun ChartStyleChip(
 private fun StepButton(icon: androidx.compose.ui.graphics.vector.ImageVector, rotated: Boolean = false, onClick: () -> Unit) {
     Box(
         Modifier
-            .size(38.dp)
+            .size(48.dp)
             .clip(RoundedCornerShape(50))
             .background(MaterialTheme.colorScheme.surface)
             .clickable(onClick = onClick),
