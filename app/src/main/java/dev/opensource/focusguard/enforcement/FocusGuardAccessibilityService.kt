@@ -499,7 +499,14 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             dropReelOverlay()
             return
         }
-        scanReelSurface(pkg)
+        // A window change inside the same app is a navigation, so it is a
+        // definitive answer: if the feed is gone, the mark goes with it. The
+        // sticky window only ever covers content-change scans.
+        val now = System.currentTimeMillis()
+        if (now - lastReelScanAt >= REEL_NAV_SCAN_GAP_MS) {
+            lastReelScanAt = now
+            scanReelSurface(pkg, definitive = true)
+        }
         // The counter used to appear only after the first swipe, so a user
         // opening the feed could not tell whether it was working at all.
         // Show today's running total as soon as the feed is recognised.
@@ -548,7 +555,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      * a "Reels" tab on every screen, so a bare label match would count its home
      * feed too. See [Reels].
      */
-    private fun scanReelSurface(pkg: String) {
+    private fun scanReelSurface(pkg: String, definitive: Boolean = false) {
         val markers = Reels.markersFor(pkg)
         if (markers.isEmpty() && !Reels.isFullFeed(pkg)) {
             reelMarked = false
@@ -597,8 +604,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         } else {
             // A feed can scan as empty for a moment mid-page. Keeping the mark
             // for a few seconds stops a swipe in that gap from being lost —
-            // this was why counts came and went on a real device.
-            reelMarked = System.currentTimeMillis() - reelMarkedAt < REEL_MARK_STICKY_MS
+            // this was why counts came and went on a real device. A definitive
+            // scan (a navigation) is trusted, so leaving the feed clears it.
+            reelMarked = !definitive &&
+                System.currentTimeMillis() - reelMarkedAt < REEL_MARK_STICKY_MS
         }
     }
 
@@ -827,6 +836,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         private const val REEL_SCAN_INTERVAL_MS = 2_000L
         /** How long a mark survives a scan that came back empty. */
         private const val REEL_MARK_STICKY_MS = 5_000L
+        /** Smallest gap between the scans triggered by a window change. */
+        private const val REEL_NAV_SCAN_GAP_MS = 400L
         private const val REEL_MIN_GAP_MS = 450L
         private const val REEL_SURFACE_RATIO = 0.65
         private const val REEL_HOLD_MS = 2_600L
