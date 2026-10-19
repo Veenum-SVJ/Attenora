@@ -1,5 +1,6 @@
 package dev.opensource.focusguard.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -106,6 +107,10 @@ fun FocusGuardApp() {
         pushed = dest
     }
 
+    // System back closes a pushed screen, and only a tab root is allowed to
+    // exit the app. Without this, hardware back from Settings killed the app.
+    BackHandler(enabled = pushed != null) { pushed = null }
+
     val drawerItems = listOf(
         DrawerItem("Home", FgIcons.Home) { scope.launch { drawerState.close() }; goTo(0) },
         DrawerItem("Usage Limits", FgIcons.Gauge) { scope.launch { drawerState.close() }; goTo(1) },
@@ -188,7 +193,8 @@ fun FocusGuardApp() {
                     current != null -> PushedContent(
                         dest = current,
                         onPop = { pushed = null },
-                        onPush = ::push
+                        onPush = ::push,
+                        onOpenInAppBlocking = { pushed = null; tab = 2 }
                     )
                     tab == 0 -> UsageStatsScreen(
                         query = searchQuery,
@@ -341,7 +347,12 @@ private fun AppBottomBar(selected: Int, onSelect: (Int) -> Unit) {
 }
 
 @Composable
-private fun PushedContent(dest: Pushed, onPop: () -> Unit, onPush: (Pushed) -> Unit) {
+private fun PushedContent(
+    dest: Pushed,
+    onPop: () -> Unit,
+    onPush: (Pushed) -> Unit,
+    onOpenInAppBlocking: () -> Unit
+) {
     when (dest) {
         Pushed.Settings -> SettingsScreen(onBack = onPop)
         Pushed.AddLimit -> AddLimitScreen(onBack = onPop)
@@ -349,7 +360,8 @@ private fun PushedContent(dest: Pushed, onPop: () -> Unit, onPush: (Pushed) -> U
         is Pushed.AppDetail -> dev.opensource.focusguard.ui.stats.AppDetailScreen(
             pkg = dest.pkg,
             onBack = onPop,
-            onSetLimit = { onPush(Pushed.AddLimit) }
+            onSetLimit = { onPush(Pushed.AddLimit) },
+            onBlockInApp = onOpenInAppBlocking
         )
     }
 }

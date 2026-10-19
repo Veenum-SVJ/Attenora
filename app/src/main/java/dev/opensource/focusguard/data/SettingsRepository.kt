@@ -28,21 +28,6 @@ object ChallengeMode {
     const val CHALLENGE = "challenge"
 }
 
-/** Per-app icon mask used across the usage lists. */
-object AppIconShape {
-    const val ROUNDED = "rounded"
-    const val SQUIRCLE = "squircle"
-    const val CIRCLE = "circle"
-    const val SQUARE = "square"
-}
-
-/** Bottom-nav icon chip shape. */
-object TabChipShape {
-    const val ROUNDED = "rounded"
-    const val CIRCLE = "circle"
-    const val PILL = "pill"
-}
-
 /**
  * What the block prompt requires before granting more time
  * (Curbox-style unlock challenges).
@@ -78,8 +63,6 @@ class SettingsRepository(private val context: Context) {
         val COUNTDOWN_ON = booleanPreferencesKey("countdown_on")
         val LAUNCHER_ICON = intPreferencesKey("launcher_icon")
         val ICON_ACCENT = intPreferencesKey("icon_accent")
-        val APP_ICON_SHAPE = stringPreferencesKey("app_icon_shape")
-        val TAB_CHIP_SHAPE = stringPreferencesKey("tab_chip_shape")
 
         val ASSISTANT_ON = booleanPreferencesKey("assistant_on")
         val TOTAL10_ON = booleanPreferencesKey("total10_on")
@@ -135,8 +118,6 @@ class SettingsRepository(private val context: Context) {
     val countdownOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.COUNTDOWN_ON] ?: true }
     val launcherIcon: Flow<Int> = context.dataStore.data.map { it[Keys.LAUNCHER_ICON] ?: 0 }
     val iconAccent: Flow<Int> = context.dataStore.data.map { it[Keys.ICON_ACCENT] ?: 0 }
-    val appIconShape: Flow<String> = context.dataStore.data.map { it[Keys.APP_ICON_SHAPE] ?: AppIconShape.ROUNDED }
-    val tabChipShape: Flow<String> = context.dataStore.data.map { it[Keys.TAB_CHIP_SHAPE] ?: TabChipShape.ROUNDED }
 
     val assistantOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.ASSISTANT_ON] ?: false }
     val total10On: Flow<Boolean> = context.dataStore.data.map { it[Keys.TOTAL10_ON] ?: false }
@@ -201,8 +182,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setCountdownOn(on: Boolean) = context.dataStore.edit { it[Keys.COUNTDOWN_ON] = on }
     suspend fun setLauncherIcon(index: Int) = context.dataStore.edit { it[Keys.LAUNCHER_ICON] = index.coerceIn(0, 5) }
     suspend fun setIconAccent(index: Int) = context.dataStore.edit { it[Keys.ICON_ACCENT] = index.coerceIn(0, 5) }
-    suspend fun setAppIconShape(shape: String) = context.dataStore.edit { it[Keys.APP_ICON_SHAPE] = shape }
-    suspend fun setTabChipShape(shape: String) = context.dataStore.edit { it[Keys.TAB_CHIP_SHAPE] = shape }
 
     suspend fun setAssistantOn(on: Boolean) = context.dataStore.edit { it[Keys.ASSISTANT_ON] = on }
     suspend fun setTotal10On(on: Boolean) = context.dataStore.edit { it[Keys.TOTAL10_ON] = on }

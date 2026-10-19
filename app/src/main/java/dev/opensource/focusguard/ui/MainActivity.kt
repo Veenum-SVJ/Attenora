@@ -14,13 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.fragment.app.FragmentActivity
 import dev.opensource.focusguard.FocusApp
-import dev.opensource.focusguard.data.AppIconShape
-import dev.opensource.focusguard.data.TabChipShape
 import dev.opensource.focusguard.data.ThemeMode
 import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.LocalAppContainer
-import dev.opensource.focusguard.ui.common.LocalAppIconShape
-import dev.opensource.focusguard.ui.common.LocalTabChipShape
 import dev.opensource.focusguard.ui.theme.FgColors
 import dev.opensource.focusguard.ui.lock.LockGate
 import dev.opensource.focusguard.ui.theme.FocusGuardTheme
@@ -62,13 +58,9 @@ class MainActivity : FragmentActivity() {
                     else -> isSystemInDarkTheme()
                 }
                 val accentIdx by container.settings.iconAccent.collectAsState(initial = 0)
-                val appIconShp by container.settings.appIconShape.collectAsState(initial = AppIconShape.ROUNDED)
-                val tabChipShp by container.settings.tabChipShape.collectAsState(initial = TabChipShape.ROUNDED)
 
                 CompositionLocalProvider(
-                    LocalAccentColor provides FgColors.accentColor(accentIdx),
-                    LocalAppIconShape provides appIconShp,
-                    LocalTabChipShape provides tabChipShp
+                    LocalAccentColor provides FgColors.accentColor(accentIdx)
                 ) {
                     FocusGuardTheme(darkTheme = darkTheme) {
                         // Paint the themed background edge-to-edge so onboarding

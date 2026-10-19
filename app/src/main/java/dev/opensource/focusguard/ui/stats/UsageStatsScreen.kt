@@ -104,7 +104,6 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     val dismissedTips = remember { androidx.compose.runtime.mutableStateListOf<String>() }
 
     val mondayFirst by container.settings.weekMondayFirst.collectAsState(initial = true)
-    val hiddenKeys by container.hiddenKeys.collectAsState()
 
     // Reconcile once when the screen appears (checkpointed delta — cheap).
     // The rows below are read by a separate one-shot query, so bump a tick
@@ -178,10 +177,9 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     val isToday = range.single && range.from.toString() == container.usage.todayKey()
     val grandTotal = remember(rows) { rows.sumOf { it.usedMs } }
 
-    val visibleRows = remember(rows, query, hiddenKeys) {
+    val visibleRows = remember(rows, query) {
         rows.filter { row ->
             if (row.packageName.startsWith("web:")) return@filter false
-            if ("app:${row.packageName}" in hiddenKeys) return@filter false
             if (query.isNotBlank()) {
                 val label = row.packageName.lowercase()
                 if (!label.contains(query.trim().lowercase())) return@filter false

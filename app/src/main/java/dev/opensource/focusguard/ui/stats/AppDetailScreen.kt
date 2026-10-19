@@ -43,7 +43,12 @@ import java.time.LocalDate
 
 /** Per-app history + quick actions ("mini history + set limit"). */
 @Composable
-fun AppDetailScreen(pkg: String, onBack: () -> Unit, onSetLimit: () -> Unit) {
+fun AppDetailScreen(
+    pkg: String,
+    onBack: () -> Unit,
+    onSetLimit: () -> Unit,
+    onBlockInApp: () -> Unit
+) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -52,8 +57,6 @@ fun AppDetailScreen(pkg: String, onBack: () -> Unit, onSetLimit: () -> Unit) {
     var todayMs by remember { mutableStateOf(0L) }
     var weekTotal by remember { mutableStateOf(0L) }
     var categoryNames by remember { mutableStateOf<List<String>>(emptyList()) }
-    val hiddenKeys by container.hiddenKeys.collectAsState()
-    val isHidden = "app:$pkg" in hiddenKeys
 
     LaunchedEffect(pkg) {
         runCatching { container.usage.reconcileNow() }
@@ -153,20 +156,10 @@ fun AppDetailScreen(pkg: String, onBack: () -> Unit, onSetLimit: () -> Unit) {
                 Spacer(Modifier.width(8.dp))
                 Text("Set a limit")
             }
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        if (isHidden) container.db.hiddenItemDao().delete(HiddenKind.APP, pkg)
-                        else container.db.hiddenItemDao().insert(
-                            HiddenItem(HiddenKind.APP, pkg, System.currentTimeMillis())
-                        )
-                    }
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                FgIcon(if (isHidden) FgIcons.Eye else FgIcons.EyeOff, null, size = 18.dp)
+            OutlinedButton(onClick = onBlockInApp, modifier = Modifier.weight(1f)) {
+                FgIcon(FgIcons.Grid, null, size = 18.dp)
                 Spacer(Modifier.width(8.dp))
-                Text(if (isHidden) "Unhide" else "Hide from stats")
+                Text("In-app blocking")
             }
         }
         Spacer(Modifier.height(24.dp))

@@ -52,24 +52,12 @@ val LocalAppContainer = androidx.compose.runtime.compositionLocalOf<AppContainer
 /** Accent color for nav/drawer icon chips and their icons. */
 val LocalAccentColor = compositionLocalOf { dev.opensource.focusguard.ui.theme.FgColors.Lavender }
 
-/** Mask applied to per-app icons in lists. */
-val LocalAppIconShape = compositionLocalOf { dev.opensource.focusguard.data.AppIconShape.ROUNDED }
-
-/** Shape of the bottom-nav icon chips. */
-val LocalTabChipShape = compositionLocalOf { dev.opensource.focusguard.data.TabChipShape.ROUNDED }
-
-fun appIconShapeFor(shape: String, size: Dp): Shape = when (shape) {
-    dev.opensource.focusguard.data.AppIconShape.CIRCLE -> CircleShape
-    dev.opensource.focusguard.data.AppIconShape.SQUARE -> RoundedCornerShape(0.dp)
-    dev.opensource.focusguard.data.AppIconShape.SQUIRCLE -> RoundedCornerShape(size * 0.30f)
-    else -> RoundedCornerShape(size * 0.22f)
-}
-
-fun tabChipShapeFor(shape: String): Shape = when (shape) {
-    dev.opensource.focusguard.data.TabChipShape.CIRCLE -> CircleShape
-    dev.opensource.focusguard.data.TabChipShape.PILL -> RoundedCornerShape(50)
-    else -> RoundedCornerShape(14.dp)
-}
+/**
+ * Per-app icon mask. Fixed by the design system — the old user-selectable
+ * app-icon/tab-chip shapes were retired in v1.2, so every list renders app
+ * icons the same way.
+ */
+fun appIconShape(size: Dp): Shape = RoundedCornerShape(size * 0.28f)
 
 /** Custom outline icon, tinted with the current content color. */
 @Composable
@@ -175,7 +163,7 @@ fun AppIcon(packageName: String, size: Dp = 36.dp, modifier: Modifier = Modifier
     val icon: android.graphics.Bitmap? = remember(packageName) {
         appIconBitmap(context, packageName)
     }
-    val shape = appIconShapeFor(LocalAppIconShape.current, size)
+    val shape = appIconShape(size)
     if (icon != null) {
         Image(
             bitmap = icon.asImageBitmap(),
@@ -183,20 +171,26 @@ fun AppIcon(packageName: String, size: Dp = 36.dp, modifier: Modifier = Modifier
             modifier = modifier.size(size).clip(shape)
         )
     } else {
-        // Icon lookup failed (rare: broken/removed package) — show the app's
-        // initial rather than a blank gray tile.
+        // Not installed, so PackageManager has no drawable to give us (this is
+        // the common case on the Usage Limits and In-App Blocking screens,
+        // which list apps you may not have). Draw the same initial-tile idea
+        // the launcher uses: a tinted square that is stable per package, so
+        // Instagram is always the same tile, and the initial is legible
+        // instead of a flat gray box.
+        val tint = dev.opensource.focusguard.ui.theme.FgColors
+            .chartColor(kotlin.math.abs(packageName.hashCode()))
         Box(
             modifier
                 .size(size)
                 .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+                .background(tint.copy(alpha = 0.85f)),
             contentAlignment = Alignment.Center
         ) {
             Text(
                 appLabel(context, packageName).take(1).uppercase(),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF16161A)
             )
         }
     }
