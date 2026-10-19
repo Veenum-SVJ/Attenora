@@ -6,6 +6,7 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.view.View
+import dev.opensource.focusguard.data.SettingsRepository
 
 /**
  * The live reel count: one number with "reels today" under it, drawn straight
@@ -66,6 +67,29 @@ class ReelCounterView(context: Context) : View(context) {
             invalidate()
         }
 
+    /**
+     * How solid the glyphs are, 0.15..1. Independent of the view's own [alpha],
+     * which is what the fade in/out animates — so a translucent counter can
+     * still fade in and out cleanly instead of starting at the wrong value.
+     */
+    var opacity: Float = 1f
+        set(value) {
+            val v = value.coerceIn(SettingsRepository.MIN_REEL_OPACITY, 1f)
+            if (field == v) return
+            field = v
+            applyOpacity()
+            invalidate()
+        }
+
+    private fun applyOpacity() {
+        countFill.alpha = (255 * opacity).toInt()
+        labelFill.alpha = (255 * opacity).toInt()
+        countSoft.alpha = (SOFT_ALPHA * opacity).toInt()
+        labelSoft.alpha = (SOFT_ALPHA * opacity).toInt()
+        countTight.alpha = (TIGHT_ALPHA * opacity).toInt()
+        labelTight.alpha = (TIGHT_ALPHA * opacity).toInt()
+    }
+
     init {
         // Purely decorative, and the window is NOT_TOUCHABLE — a tap here must
         // reach the reel underneath, never this view.
@@ -115,9 +139,11 @@ class ReelCounterView(context: Context) : View(context) {
         const val LABEL = "reels today"
 
         /** Wide, faint pass — reads as a soft shadow rather than an outline. */
-        val SOFT = 0x66000000
+        const val SOFT = 0x66000000
+        const val SOFT_ALPHA = 0x66
 
         /** Tight edge, just enough to hold the white against a bright clip. */
-        val TIGHT = 0xB3000000.toInt()
+        const val TIGHT = 0xB3000000.toInt()
+        const val TIGHT_ALPHA = 0xB3
     }
 }

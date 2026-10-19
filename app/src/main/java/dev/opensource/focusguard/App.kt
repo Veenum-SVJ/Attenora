@@ -130,6 +130,11 @@ class AppContainer(val app: Context) {
     val reelCounterOn: StateFlow<Boolean> =
         settings.reelCounterOn.stateIn(scope, SharingStarted.Eagerly, true)
 
+    val reelOverlayOpacity: StateFlow<Float> =
+        settings.reelOverlayOpacity.stateIn(
+            scope, SharingStarted.Eagerly, 1f
+        )
+
     /**
      * Warm cache of the onboarding flag. `collectAsState()` on a StateFlow uses
      * its current value as the initial, so a returning user's first frame

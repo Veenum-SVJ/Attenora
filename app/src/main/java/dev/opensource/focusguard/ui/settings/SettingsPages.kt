@@ -31,6 +31,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.data.BlockedSite
 import dev.opensource.focusguard.data.ChallengeMode
+import dev.opensource.focusguard.data.SettingsRepository
 import dev.opensource.focusguard.data.ThemeMode
 import dev.opensource.focusguard.enforcement.Alarms
 import dev.opensource.focusguard.enforcement.FocusGuardAccessibilityService
@@ -151,6 +153,38 @@ internal fun ChoicePill(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * How solid the on-video count is. Lives under the reel switch because it only
+ * means anything while the counter is on. The value is committed when the
+ * finger lifts rather than on every frame, so a drag is one write, not sixty.
+ */
+@Composable
+private fun OverlayOpacityRow(value: Float, onChange: (Float) -> Unit) {
+    var local by remember(value) { mutableStateOf(value) }
+    Column(
+        Modifier.padding(start = 20.dp, end = 20.dp, top = 14.dp, bottom = 2.dp)
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "Count opacity",
+                style = MaterialTheme.typography.bodyLarge,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                "${(local * 100).toInt()}%",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Slider(
+            value = local,
+            onValueChange = { local = it },
+            onValueChangeFinished = { onChange(local) },
+            valueRange = SettingsRepository.MIN_REEL_OPACITY..1f
+        )
+    }
+}
+
+/**
  * How usage is measured, and who is allowed to change a limit.
  *
  * The two halves are deliberately one page: both answer "what counts, and who
@@ -167,6 +201,7 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     val mondayFirst by container.settings.weekMondayFirst.collectAsState(initial = true)
     val countdownOn by container.settings.countdownOn.collectAsState(initial = true)
     val reelCounterOn by container.settings.reelCounterOn.collectAsState(initial = true)
+    val reelOpacity by container.settings.reelOverlayOpacity.collectAsState(initial = 1f)
     val challengeMode by container.settings.challengeMode.collectAsState(initial = ChallengeMode.NONE)
     val challengeType by container.settings.challengeType.collectAsState(initial = "quote")
     val challengeText by container.settings.challengeText.collectAsState(initial = "")
@@ -208,6 +243,12 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                 checked = reelCounterOn,
                 onCheckedChange = { on -> scope.launch { container.settings.setReelCounter(on) } }
             )
+            if (reelCounterOn) {
+                FgDivider(inset = RowInset)
+                OverlayOpacityRow(reelOpacity) { v ->
+                    scope.launch { container.settings.setReelOverlayOpacity(v) }
+                }
+            }
         }
 
         SectionLabel("Limit protection")

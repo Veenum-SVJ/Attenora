@@ -139,6 +139,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     private var reelShown = false
     private var reelPkg: String? = null
     private var reelMarked = false
+    private var reelMarkedAt = 0L
     private var lastReelScanAt = 0L
     private var lastReelCountAt = 0L
 
@@ -489,6 +490,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         if (reelPkg != pkg) {
             reelPkg = pkg
             reelMarked = false
+            reelMarkedAt = 0L
             lastReelScanAt = 0L
             dropReelOverlay()
         }
@@ -498,6 +500,20 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             return
         }
         scanReelSurface(pkg)
+        // The counter used to appear only after the first swipe, so a user
+        // opening the feed could not tell whether it was working at all.
+        // Show today's running total as soon as the feed is recognised.
+        if (reelMarked) revealReelTotal()
+    }
+
+    /** Show today's total on entering a recognised feed, before any swipe. */
+    private fun revealReelTotal() {
+        container.scope.launch {
+            val total = runCatching {
+                container.db.reelCountDao().totalForDay(container.usage.todayKey())
+            }.getOrNull() ?: 0
+            mainHandler.post { if (reelMarked) showReelCount(total) }
+        }
     }
 
     /**
@@ -515,12 +531,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         if (reelPkg != pkg) {
             reelPkg = pkg
             reelMarked = false
+            reelMarkedAt = 0L
             dropReelOverlay()
         }
         val now = System.currentTimeMillis()
         if (now - lastReelScanAt < REEL_SCAN_INTERVAL_MS) return
         lastReelScanAt = now
+        val wasMarked = reelMarked
         scanReelSurface(pkg)
+        if (reelMarked && !wasMarked) revealReelTotal()
     }
 
     /**
@@ -531,7 +550,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      */
     private fun scanReelSurface(pkg: String) {
         val markers = Reels.markersFor(pkg)
-        if (markers.isEmpty()) {
+        if (markers.isEmpty() && !Reels.isFullFeed(pkg)) {
             reelMarked = false
             return
         }
@@ -572,7 +591,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {
             return // never crash the accessibility pipeline
         }
-        reelMarked = found
+        if (found) {
+            reelMarked = true
+            reelMarkedAt = System.currentTimeMillis()
+        } else {
+            // A feed can scan as empty for a moment mid-page. Keeping the mark
+            // for a few seconds stops a swipe in that gap from being lost —
+            // this was why counts came and went on a real device.
+            reelMarked = System.currentTimeMillis() - reelMarkedAt < REEL_MARK_STICKY_MS
+        }
     }
 
     /**
@@ -581,9 +608,19 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      * between counts.
      */
     private fun noteReelScroll(pkg: String) {
-        if (!reelMarked) return
-        if (!container.reelCounterOn.value) return
         if (reelPkg != pkg) return
+        if (!container.reelCounterOn.value) return
+        if (!reelMarked) {
+            // The scan runs on a timer while the feed is open, so a swipe can
+            // land in the gap between two scans. Look once more at the moment
+            // it matters rather than dropping the swipe.
+            val scanNow = System.currentTimeMillis()
+            if (scanNow - lastReelScanAt >= REEL_SCAN_INTERVAL_MS) {
+                lastReelScanAt = scanNow
+                scanReelSurface(pkg)
+            }
+            if (!reelMarked) return
+        }
         val now = System.currentTimeMillis()
         if (now - lastReelCountAt < REEL_MIN_GAP_MS) return
         lastReelCountAt = now
@@ -640,6 +677,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             fresh
         }
         view.animate().cancel()
+        view.opacity = container.reelOverlayOpacity.value
         view.animate().alpha(1f).setDuration(REEL_FADE_IN_MS).start()
         mainHandler.removeCallbacks(reelFadeOut)
         mainHandler.postDelayed(reelFadeOut, REEL_HOLD_MS)
@@ -666,6 +704,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     private fun clearReelState() {
         reelPkg = null
         reelMarked = false
+        reelMarkedAt = 0L
         lastReelScanAt = 0L
         dropReelOverlay()
     }
@@ -786,6 +825,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         // Reel counter: a bounded marker scan, then one count per vertical swipe.
         private const val REEL_MAX_NODES = 120
         private const val REEL_SCAN_INTERVAL_MS = 2_000L
+        /** How long a mark survives a scan that came back empty. */
+        private const val REEL_MARK_STICKY_MS = 5_000L
         private const val REEL_MIN_GAP_MS = 450L
         private const val REEL_SURFACE_RATIO = 0.65
         private const val REEL_HOLD_MS = 2_600L

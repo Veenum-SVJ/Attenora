@@ -3,6 +3,7 @@ package dev.opensource.focusguard.data
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -61,6 +62,8 @@ class SettingsRepository(private val context: Context) {
         val IGNORE_WEBSITES = booleanPreferencesKey("ignore_websites")
         val COUNTDOWN_ON = booleanPreferencesKey("countdown_on")
         val REEL_COUNTER_ON = booleanPreferencesKey("reel_counter_on")
+        /** How solid the on-video count is, 0.15..1. */
+        val REEL_OVERLAY_OPACITY = floatPreferencesKey("reel_overlay_opacity")
         /** Ids of the one-per-screen first-run hints already dismissed. */
         val HINTS_SEEN = stringSetPreferencesKey("hints_seen")
         val LAUNCHER_ICON = intPreferencesKey("launcher_icon")
@@ -119,6 +122,10 @@ class SettingsRepository(private val context: Context) {
     val countdownOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.COUNTDOWN_ON] ?: true }
     /** Short-video counter + its live on-screen count. On by default. */
     val reelCounterOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.REEL_COUNTER_ON] ?: true }
+    /** Glyph opacity of the on-video count; 1 = fully solid. */
+    val reelOverlayOpacity: Flow<Float> = context.dataStore.data.map {
+        (it[Keys.REEL_OVERLAY_OPACITY] ?: 1f).coerceIn(MIN_REEL_OPACITY, 1f)
+    }
     /** Hint ids the user has dismissed; each hint is shown once ever. */
     val hintsSeen: Flow<Set<String>> = context.dataStore.data.map { it[Keys.HINTS_SEEN] ?: emptySet() }
     val launcherIcon: Flow<Int> = context.dataStore.data.map { it[Keys.LAUNCHER_ICON] ?: 0 }
@@ -190,6 +197,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun setIgnoreWebsites(on: Boolean) = context.dataStore.edit { it[Keys.IGNORE_WEBSITES] = on }
     suspend fun setCountdownOn(on: Boolean) = context.dataStore.edit { it[Keys.COUNTDOWN_ON] = on }
     suspend fun setReelCounter(on: Boolean) = context.dataStore.edit { it[Keys.REEL_COUNTER_ON] = on }
+    suspend fun setReelOverlayOpacity(value: Float) = context.dataStore.edit {
+        it[Keys.REEL_OVERLAY_OPACITY] = value.coerceIn(MIN_REEL_OPACITY, 1f)
+    }
     suspend fun setLauncherIcon(index: Int) = context.dataStore.edit { it[Keys.LAUNCHER_ICON] = index.coerceIn(0, 5) }
     suspend fun setIconAccent(index: Int) = context.dataStore.edit { it[Keys.ICON_ACCENT] = index.coerceIn(0, 5) }
 
@@ -253,4 +263,13 @@ class SettingsRepository(private val context: Context) {
 
     /** Erase every preference (used by "wipe all data"). */
     suspend fun wipe() = context.dataStore.edit { it.clear() }
+
+    companion object {
+        /**
+         * Below this the counter stops being legible against a bright clip, so
+         * the slider bottoms out here rather than at zero — "invisible" would
+         * just look like the counter is broken.
+         */
+        const val MIN_REEL_OPACITY = 0.15f
+    }
 }
