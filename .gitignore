@@ -18,3 +18,4 @@ keystore.properties
 .android/
 test-report/
 /docs/assets/
+.opencode/

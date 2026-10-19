@@ -54,6 +54,9 @@ android {
     }
     buildFeatures {
         compose = true
+        // About/version labels are derived from versionName so they can never
+        // drift out of sync with the build.
+        buildConfig = true
     }
     packaging {
         resources {

@@ -1,10 +1,6 @@
 package dev.opensource.focusguard.ui
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,7 +14,6 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -42,15 +37,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import dev.opensource.focusguard.ui.blocking.InAppBlockingScreen
+import dev.opensource.focusguard.ui.common.FgDivider
 import dev.opensource.focusguard.ui.common.FgIcon
+import dev.opensource.focusguard.ui.common.FocusMark
 import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.LocalAppContainer
-import dev.opensource.focusguard.ui.common.LocalTabChipShape
-import dev.opensource.focusguard.ui.common.tabChipShapeFor
 import dev.opensource.focusguard.ui.icons.FgIcons
 import dev.opensource.focusguard.ui.limits.AddLimitScreen
 import dev.opensource.focusguard.ui.limits.BlockKeywordsScreen
@@ -69,15 +62,14 @@ sealed interface Pushed {
 }
 
 private data class TabSpec(
-    val line1: String,
-    val line2: String,
+    val label: String,
     val icon: ImageVector
 )
 
 private val tabs = listOf(
-    TabSpec("Usage", "Stats", FgIcons.ChartBar),
-    TabSpec("Usage", "Limits", FgIcons.Gauge),
-    TabSpec("In-App", "Blocking", FgIcons.Grid)
+    TabSpec("Usage Stats", FgIcons.ChartBar),
+    TabSpec("Usage Limits", FgIcons.Gauge),
+    TabSpec("In-App Blocking", FgIcons.Grid)
 )
 
 private data class DrawerItem(
@@ -104,7 +96,6 @@ fun FocusGuardApp() {
     var searchActive by rememberSaveable { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val version = remember { "v1.1.0" }
 
     fun goTo(targetTab: Int) {
         pushed = null
@@ -127,27 +118,20 @@ fun FocusGuardApp() {
         gesturesEnabled = pushed == null, // drawer only on tab roots
         drawerContent = {
             ModalDrawerSheet(
-                drawerContainerColor = MaterialTheme.colorScheme.surface,
-                drawerContentColor = MaterialTheme.colorScheme.onSurface
+                drawerContainerColor = MaterialTheme.colorScheme.background,
+                drawerContentColor = MaterialTheme.colorScheme.onBackground
             ) {
                 Column(Modifier.fillMaxSize()) {
                     Spacer(Modifier.height(28.dp))
-                    val accent = LocalAccentColor.current
+                    // The app's own mark, not the Usage Stats glyph — the
+                    // drawer is the app identity, not a screen.
                     Row(
                         Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 20.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Box(
-                            Modifier
-                                .size(44.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .background(accent.copy(alpha = 0.16f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            FgIcon(FgIcons.ChartBar, null, size = 24.dp, tint = accent)
-                        }
+                        FocusMark(size = 34.dp)
                         Spacer(Modifier.width(12.dp))
                         Text(
                             "FocusGuard",
@@ -155,41 +139,17 @@ fun FocusGuardApp() {
                             fontWeight = FontWeight.SemiBold
                         )
                     }
-                    Spacer(Modifier.height(24.dp))
+                    Spacer(Modifier.height(20.dp))
                     drawerItems.forEachIndexed { index, item ->
-                        if (item.label == "Settings") {
-                            HorizontalDivider(
-                                Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
-                                color = MaterialTheme.colorScheme.outlineVariant
-                            )
+                        val isSettings = item.label == "Settings"
+                        if (isSettings) {
+                            FgDivider(Modifier.padding(horizontal = 20.dp, vertical = 10.dp))
                         }
-                        DrawerRow(item)
-                    }
-                    Spacer(Modifier.weight(1f))
-                    HorizontalDivider(
-                        Modifier.padding(horizontal = 20.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant
-                    )
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        FgIcon(FgIcons.Info, null, size = 20.dp)
-                        Spacer(Modifier.width(12.dp))
-                        Column {
-                            Text(
-                                "FocusGuard $version",
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                "Fully offline · no ads · no accounts",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        DrawerRow(
+                            item = item,
+                            selected = if (isSettings) pushed == Pushed.Settings
+                            else pushed == null && tab == index
+                        )
                     }
                 }
             }
@@ -200,7 +160,7 @@ fun FocusGuardApp() {
             containerColor = MaterialTheme.colorScheme.background,
             topBar = {
                 if (current == null) {
-                    SearchPill(
+                    TopRow(
                         query = searchQuery,
                         active = searchActive,
                         onActiveChange = { searchActive = it },
@@ -247,24 +207,37 @@ fun FocusGuardApp() {
 }
 
 @Composable
-private fun DrawerRow(item: DrawerItem) {
+private fun DrawerRow(item: DrawerItem, selected: Boolean) {
     val accent = LocalAccentColor.current
-    val colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
-        selectedContainerColor = accent.copy(alpha = 0.16f),
-        selectedTextColor = accent
-    )
     androidx.compose.material3.NavigationDrawerItem(
-        label = { Text(item.label, fontWeight = FontWeight.Medium) },
-        selected = false,
+        label = {
+            Text(
+                item.label,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+            )
+        },
+        selected = selected,
         onClick = item.action,
         icon = { FgIcon(item.icon, null, size = 22.dp) },
-        colors = colors,
-        modifier = Modifier.padding(horizontal = 12.dp)
+        colors = androidx.compose.material3.NavigationDrawerItemDefaults.colors(
+            selectedContainerColor = accent.copy(alpha = 0.16f),
+            selectedTextColor = accent,
+            selectedIconColor = accent,
+            unselectedTextColor = MaterialTheme.colorScheme.onBackground,
+            unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant
+        ),
+        modifier = Modifier.padding(horizontal = 8.dp)
     )
 }
 
+/**
+ * Slim top row: menu on the left, search on the right. Screens own their large
+ * left-aligned titles, so nothing competes with them — the old full-width
+ * search pill sat above every title and pushed it down the page.
+ */
 @Composable
-private fun SearchPill(
+private fun TopRow(
     query: String,
     active: Boolean,
     onActiveChange: (Boolean) -> Unit,
@@ -275,65 +248,60 @@ private fun SearchPill(
         Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-            .clip(RoundedCornerShape(50))
-            .background(MaterialTheme.colorScheme.surface)
-            .height(54.dp)
-            .padding(horizontal = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+            .height(48.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        androidx.compose.material3.IconButton(onClick = onMenu) {
-            FgIcon(FgIcons.Menu, "Open menu", size = 24.dp)
-        }
         if (active) {
-            androidx.compose.foundation.text.BasicTextField(
-                value = query,
-                onValueChange = onQueryChange,
-                singleLine = true,
-                textStyle = MaterialTheme.typography.bodyLarge.copy(
-                    color = MaterialTheme.colorScheme.onSurface
-                ),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(LocalAccentColor.current),
-                modifier = Modifier
+            Row(
+                Modifier
                     .weight(1f)
-                    .padding(horizontal = 6.dp),
-                decorationBox = { inner ->
-                    Box {
-                        if (query.isEmpty()) {
-                            Text(
-                                "Search in FocusGuard",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                style = MaterialTheme.typography.bodyLarge
-                            )
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surface)
+                    .height(40.dp)
+                    .padding(horizontal = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                FgIcon(
+                    FgIcons.Search, null, size = 18.dp,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.width(8.dp))
+                androidx.compose.foundation.text.BasicTextField(
+                    value = query,
+                    onValueChange = onQueryChange,
+                    singleLine = true,
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(LocalAccentColor.current),
+                    modifier = Modifier.weight(1f),
+                    decorationBox = { inner ->
+                        Box {
+                            if (query.isEmpty()) {
+                                Text(
+                                    "Search in FocusGuard",
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                            inner()
                         }
-                        inner()
                     }
+                )
+                androidx.compose.material3.IconButton(onClick = {
+                    if (query.isNotEmpty()) onQueryChange("") else onActiveChange(false)
+                }) {
+                    FgIcon(FgIcons.Close, "Clear search", size = 18.dp)
                 }
-            )
-            androidx.compose.material3.IconButton(onClick = {
-                if (query.isNotEmpty()) onQueryChange("") else onActiveChange(false)
-            }) {
-                FgIcon(FgIcons.Close, "Clear search", size = 20.dp)
             }
         } else {
-            Text(
-                "Search in FocusGuard",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp)
-                    .clickable { onActiveChange(true) }
-            )
-            val accent = LocalAccentColor.current
-            Box(
-                Modifier
-                    .size(38.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(accent.copy(alpha = 0.16f)),
-                contentAlignment = Alignment.Center
-            ) {
-                FgIcon(FgIcons.Search, null, size = 20.dp, tint = accent)
+            androidx.compose.material3.IconButton(onClick = onMenu) {
+                FgIcon(FgIcons.Menu, "Open menu", size = 24.dp)
+            }
+            Spacer(Modifier.weight(1f))
+            androidx.compose.material3.IconButton(onClick = { onActiveChange(true) }) {
+                FgIcon(FgIcons.Search, "Search", size = 22.dp)
             }
         }
     }
@@ -342,39 +310,22 @@ private fun SearchPill(
 @Composable
 private fun AppBottomBar(selected: Int, onSelect: (Int) -> Unit) {
     val accent = LocalAccentColor.current
-    val chipShape = tabChipShapeFor(LocalTabChipShape.current)
-    NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.background,
+        tonalElevation = 0.dp
+    ) {
         tabs.forEachIndexed { index, spec ->
-            val progress by animateFloatAsState(
-                targetValue = if (selected == index) 1f else 0f,
-                animationSpec = tween(220),
-                label = "tab-$index"
-            )
+            val isSelected = selected == index
             NavigationBarItem(
-                selected = selected == index,
+                selected = isSelected,
                 onClick = { onSelect(index) },
-                icon = {
-                    Box(
-                        Modifier
-                            .size(46.dp)
-                            .clip(chipShape)
-                            .background(
-                                accent.copy(
-                                    alpha = (0.10f + 0.10f * progress)
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        FgIcon(spec.icon, null, size = 24.dp, tint = accent)
-                    }
-                },
+                icon = { FgIcon(spec.icon, null, size = 23.dp) },
                 label = {
                     Text(
-                        "${spec.line1}\n${spec.line2}",
+                        spec.label,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (selected == index) FontWeight.SemiBold else FontWeight.Normal,
-                        textAlign = TextAlign.Center,
-                        lineHeight = 14.sp
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1
                     )
                 },
                 colors = NavigationBarItemDefaults.colors(
@@ -382,7 +333,7 @@ private fun AppBottomBar(selected: Int, onSelect: (Int) -> Unit) {
                     selectedTextColor = accent,
                     unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    indicatorColor = MaterialTheme.colorScheme.surface
+                    indicatorColor = androidx.compose.ui.graphics.Color.Transparent
                 )
             )
         }

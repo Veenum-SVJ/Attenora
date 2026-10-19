@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -297,7 +298,10 @@ fun PermissionRow(
             Modifier
                 .size(10.dp)
                 .clip(CircleShape)
-                .background(if (granted) Color(0xFF34C77B) else Color(0xFFFF6B6B))
+                .background(
+                    if (granted) dev.opensource.focusguard.ui.theme.LocalFgSemantic.current.success
+                    else dev.opensource.focusguard.ui.theme.LocalFgSemantic.current.danger
+                )
         )
         Spacer(Modifier.width(10.dp))
         Text(
@@ -308,7 +312,7 @@ fun PermissionRow(
         if (granted) {
             Text(
                 "Granted",
-                color = Color(0xFF34C77B),
+                color = dev.opensource.focusguard.ui.theme.LocalFgSemantic.current.success,
                 style = MaterialTheme.typography.labelMedium
             )
         } else {
@@ -499,11 +503,16 @@ fun NavRow(
             )
             Spacer(Modifier.width(6.dp))
         }
-        FgIcon(dev.opensource.focusguard.ui.icons.FgIcons.ChevronRight, null, size = 18.dp)
+        FgIcon(
+            dev.opensource.focusguard.ui.icons.FgIcons.ChevronRight,
+            null,
+            size = 18.dp,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
     }
 }
 
-/** Rounded card container matching the screenshots' 20dp slate cards. */
+/** Grouped surface card. Depth comes from the surface step, never a shadow. */
 @Composable
 fun FgCard(
     modifier: Modifier = Modifier,
@@ -511,9 +520,120 @@ fun FgCard(
 ) {
     androidx.compose.material3.Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surface
     ) {
         androidx.compose.foundation.layout.Column(content = content)
+    }
+}
+
+/**
+ * Hairline separator. [inset] matches the leading padding of the rows above
+ * and below it so the line starts where the text does, the way iOS insets
+ * its separators past the row icon.
+ */
+@Composable
+fun FgDivider(
+    modifier: Modifier = Modifier,
+    inset: Dp = 0.dp,
+    color: Color = MaterialTheme.colorScheme.outlineVariant
+) {
+    Box(
+        modifier
+            .padding(start = inset)
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(color)
+    )
+}
+
+/**
+ * Grouped inset list: a raised card holding rows, separated by hairlines.
+ * This is the primary structural unit of the design — screens are built from
+ * a handful of these rather than from a grid of tiles.
+ */
+@Composable
+fun FgGroup(
+    modifier: Modifier = Modifier,
+    shape: Shape = RoundedCornerShape(14.dp),
+    color: Color = MaterialTheme.colorScheme.surface,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit
+) {
+    androidx.compose.material3.Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = shape,
+        color = color
+    ) {
+        androidx.compose.foundation.layout.Column(content = content)
+    }
+}
+
+/**
+ * The FocusGuard brand mark — the same shield-with-check as the launcher icon,
+ * drawn flat (no gradient) so it sits correctly on the Quiet Instrument
+ * surfaces. Two-tone, so it cannot be an ImageVector: [FgIcon] tints every
+ * path in a vector the same colour.
+ */
+@Composable
+fun FocusMark(
+    size: Dp = 34.dp,
+    modifier: Modifier = Modifier,
+    tint: Color = MaterialTheme.colorScheme.primary,
+    mark: Color = MaterialTheme.colorScheme.background
+) {
+    androidx.compose.foundation.Canvas(modifier.size(size)) {
+        val u = this.size.minDimension / 108f
+        val shield = androidx.compose.ui.graphics.Path().apply {
+            moveTo(54f * u, 24f * u)
+            lineTo(80f * u, 34f * u)
+            lineTo(80f * u, 54f * u)
+            cubicTo(80f * u, 72f * u, 69f * u, 81f * u, 54f * u, 88f * u)
+            cubicTo(39f * u, 81f * u, 28f * u, 72f * u, 28f * u, 54f * u)
+            lineTo(28f * u, 34f * u)
+            close()
+        }
+        drawPath(shield, tint)
+        val check = androidx.compose.ui.graphics.Path().apply {
+            moveTo(45f * u, 55f * u)
+            lineTo(51.5f * u, 61.5f * u)
+            lineTo(64f * u, 48.5f * u)
+            lineTo(59.5f * u, 44f * u)
+            lineTo(51.5f * u, 52.5f * u)
+            lineTo(49.5f * u, 50.5f * u)
+            close()
+        }
+        drawPath(check, mark)
+    }
+}
+
+/**
+ * Major version only, e.g. "V1". Point releases are deliberately invisible in
+ * the UI — the app shows the generation, not the patch level.
+ */
+val FgVersionLabel: String =
+    "V" + dev.opensource.focusguard.BuildConfig.VERSION_NAME.substringBefore('.')
+
+/** Centred, dimmed app identity line used at the foot of Settings. */
+@Composable
+fun AboutFooter(
+    modifier: Modifier = Modifier
+) {
+    androidx.compose.foundation.layout.Column(
+        modifier
+            .fillMaxWidth()
+            .padding(vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(
+            "FocusGuard $FgVersionLabel",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Spacer(Modifier.size(2.dp))
+        Text(
+            "Fully offline · no ads · no accounts",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+        )
     }
 }
