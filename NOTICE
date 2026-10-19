@@ -1,0 +1,46 @@
+FocusGuard — third-party notices
+================================
+
+FocusGuard ships no third-party code, fonts or images at runtime. The only
+attribution it carries is for the *geometry* of its icon set, which is derived
+from Lucide.
+
+
+Lucide
+------
+Applies to: app/src/main/java/dev/opensource/focusguard/ui/icons/FgIcons.kt
+
+The outline paths in FocusGuard's icon set follow Lucide's 24x24 grid, stroke
+weight and rounded joins, and several paths are derived from Lucide's own
+geometry (for example `gauge`, `layout-grid` and `hourglass`). They are
+re-implemented here as Compose `ImageVector` builders rather than copied as
+files, but the shapes originate from Lucide.
+
+Lucide is licensed under the ISC License:
+
+    ISC License
+
+    Copyright (c) for portions of Lucide are held by Cole Bemis 2013-2022 as
+    part of Feather (MIT). All other copyright (c) for Lucide are held by
+    Lucide Contributors 2022.
+
+    Permission to use, copy, modify, and/or distribute this software for any
+    purpose with or without fee is hereby granted, provided that the above
+    copyright notice and this permission notice appear in all copies.
+
+    THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+    WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+    MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY
+    SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+    WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+    ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
+    IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+
+    https://github.com/lucide-icons/lucide/blob/main/LICENSE
+
+
+Reference applications (not shipped)
+------------------------------------
+stayfreeapps.com screenshots and the Curbox app were used as behavioural
+references during development. No code, assets or text was copied from either.
+Curbox is GPL-3.0; its features were re-implemented from observed behaviour.

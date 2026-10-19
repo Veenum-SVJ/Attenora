@@ -27,27 +27,34 @@ object FgIcons {
             path(
                 fill = null,
                 stroke = SolidColor(Color.Black),
-                strokeLineWidth = 1.8f,
+                strokeLineWidth = 1.75f,
                 strokeLineCap = StrokeCap.Round,
                 strokeLineJoin = StrokeJoin.Round
             , pathBuilder = block)
-        }.build()
-
-    private fun solids(name: String, block: PathBuilder.() -> Unit): ImageVector =
-        ImageVector.Builder(
-            name = name,
-            defaultWidth = 24.dp,
-            defaultHeight = 24.dp,
-            viewportWidth = 24f,
-            viewportHeight = 24f
-        ).apply {
-            path(fill = SolidColor(Color.Black), pathBuilder = block)
         }.build()
 
     private fun PathBuilder.circle(cx: Float, cy: Float, r: Float) {
         moveTo(cx + r, cy)
         arcTo(r, r, 0f, true, true, cx - r, cy)
         arcTo(r, r, 0f, true, true, cx + r, cy)
+    }
+
+    /**
+     * Rounded-rectangle subpath. Written out by hand rather than relying on a
+     * `rect` shortcut so every icon on the 24-grid shares one corner radius
+     * language, and so each corner is a real arc rather than a clipped line.
+     */
+    private fun PathBuilder.roundRect(x: Float, y: Float, w: Float, h: Float, r: Float) {
+        moveTo(x + r, y)
+        lineTo(x + w - r, y)
+        arcTo(r, r, 0f, false, true, x + w, y + r)
+        lineTo(x + w, y + h - r)
+        arcTo(r, r, 0f, false, true, x + w - r, y + h)
+        lineTo(x + r, y + h)
+        arcTo(r, r, 0f, false, true, x, y + h - r)
+        lineTo(x, y + r)
+        arcTo(r, r, 0f, false, true, x + r, y)
+        close()
     }
 
     // ---- Navigation / chrome -------------------------------------------------
@@ -130,22 +137,33 @@ object FgIcons {
         moveTo(14.7f, 3.5f); lineTo(14.7f, 20.5f)
     }
 
-    /** Usage Limits tab: speedometer/gauge. */
+    /**
+     * Usage Limits tab: speedometer gauge (Lucide "gauge").
+     *
+     * This path used to open with a bare `arcTo`, with no preceding `moveTo`.
+     * Compose then treats the current point as the origin and draws a line from
+     * (0,0) into the arc, which is the broken `.\ )` glyph that showed up in the
+     * bottom bar and the Settings list. The arc now starts where it should, and
+     * the needle is a plain line off the hub.
+     */
     val Gauge = strokes("gauge") {
-        arcTo(7f, 7f, 0f, false, true, 21f, 14f)
-        moveTo(14f, 14f); lineTo(10.5f, 9.5f)
-        circle(7f, 14f, 1.2f)
+        moveTo(3.4f, 19f)
+        arcTo(10f, 10f, 0f, true, true, 20.6f, 19f)
+        moveTo(12f, 14f); lineTo(16f, 10f)
     }
 
-    /** In-App Blocking tab: 3×3 dot grid. */
-    val Grid = solids("grid") {
-        val r = 1.6f
-        for (x in listOf(5f, 12f, 19f)) for (y in listOf(5f, 12f, 19f)) {
-            moveTo(x + r, y)
-            arcTo(r, r, 0f, true, true, x - r, y)
-            arcTo(r, r, 0f, true, true, x + r, y)
-            close()
-        }
+    /**
+     * In-App Blocking tab: four tiles (Lucide "layout-grid").
+     *
+     * Was nine filled dots — the only solid glyph in the set, against the
+     * "strokes only, no fills" rule, and at 20dp it read as visual noise. The
+     * outline version sits correctly beside Gauge in the bottom bar.
+     */
+    val Grid = strokes("grid") {
+        roundRect(3f, 3f, 7.5f, 7.5f, 1.7f)
+        roundRect(13.5f, 3f, 7.5f, 7.5f, 1.7f)
+        roundRect(3f, 13.5f, 7.5f, 7.5f, 1.7f)
+        roundRect(13.5f, 13.5f, 7.5f, 7.5f, 1.7f)
     }
 
     val Home = strokes("home") {
@@ -216,14 +234,19 @@ object FgIcons {
         moveTo(6.5f, 17.5f); lineTo(17.5f, 6.5f)
     }
 
+    /**
+     * Unlock challenge: hourglass (Lucide "hourglass").
+     *
+     * The old version chained four large arcs, which produced an asymmetric,
+     * lumpy glass. Two caps plus two pinched rails read cleanly at any size.
+     */
     val Hourglass = strokes("hourglass") {
-        moveTo(6f, 4f); lineTo(18f, 4f); lineTo(18f, 6.5f)
-        arcTo(5f, 5f, 0f, false, true, 12f, 13f)
-        arcTo(5f, 5f, 0f, false, true, 6f, 19.5f)
-        lineTo(6f, 20f); lineTo(18f, 20f); lineTo(18f, 17.5f)
-        arcTo(5f, 5f, 0f, false, false, 12f, 11f)
-        arcTo(5f, 5f, 0f, false, false, 18f, 6.5f)
-        close()
+        moveTo(6f, 3.5f); lineTo(18f, 3.5f)
+        moveTo(6f, 20.5f); lineTo(18f, 20.5f)
+        moveTo(6.5f, 3.5f); lineTo(6.5f, 7.2f)
+        lineTo(11.2f, 12f); lineTo(6.5f, 16.8f); lineTo(6.5f, 20.5f)
+        moveTo(17.5f, 3.5f); lineTo(17.5f, 7.2f)
+        lineTo(12.8f, 12f); lineTo(17.5f, 16.8f); lineTo(17.5f, 20.5f)
     }
 
     // ---- Targets -------------------------------------------------------------
@@ -254,19 +277,25 @@ object FgIcons {
 
     // ---- Status / meta -------------------------------------------------------
 
+    /**
+     * Eye. The arcs need elliptical radii wider than half the chord to form a
+     * lens. The old 4.5/4.5 pair was far too small for an 18-unit chord, and
+     * Android scales an undersized radius up to a semicircle — which turned the
+     * eye into a plain ring.
+     */
     val Eye = strokes("eye") {
-        moveTo(3f, 12f)
-        arcTo(4.5f, 4.5f, 0f, false, true, 21f, 12f)
-        arcTo(4.5f, 4.5f, 0f, false, true, 3f, 12f)
-        circle(12f, 12f, 2.4f)
+        moveTo(2.5f, 12f)
+        arcTo(11f, 7f, 0f, false, true, 21.5f, 12f)
+        arcTo(11f, 7f, 0f, false, true, 2.5f, 12f)
+        circle(12f, 12f, 2.8f)
     }
 
     val EyeOff = strokes("eye_off") {
-        moveTo(4f, 9f)
-        arcTo(5f, 5f, 0f, false, true, 20f, 9f)
-        arcTo(5f, 5f, 0f, false, true, 4f, 9f)
+        moveTo(3f, 9.5f)
+        arcTo(10.5f, 7f, 0f, false, true, 21f, 9.5f)
+        arcTo(10.5f, 7f, 0f, false, true, 3f, 9.5f)
         moveTo(4.5f, 19.5f); lineTo(19.5f, 4.5f)
-        circle(12f, 11f, 2.4f)
+        circle(12f, 9.5f, 2.8f)
     }
 
     val Info = strokes("info") {
@@ -330,10 +359,15 @@ object FgIcons {
         moveTo(4.5f, 19.5f); lineTo(19.5f, 19.5f)
     }
 
+    /**
+     * Crescent (Lucide "moon"). Both arcs now have radii large enough for the
+     * chord; the outer one used to be undersized, so Android scaled it to a
+     * semicircle and the crescent became a half-disc.
+     */
     val Moon = strokes("moon") {
-        moveTo(16.5f, 4.5f)
-        arcTo(7.5f, 7.5f, 0f, false, true, 8f, 19f)
-        arcTo(6.5f, 6.5f, 0f, false, false, 16.5f, 4.5f)
+        moveTo(20.5f, 14.5f)
+        arcTo(8.5f, 8.5f, 0f, false, false, 9.5f, 3.5f)
+        arcTo(8f, 8f, 0f, false, true, 20.5f, 14.5f)
         close()
     }
 
