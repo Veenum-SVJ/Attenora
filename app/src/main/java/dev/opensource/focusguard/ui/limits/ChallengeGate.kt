@@ -62,7 +62,6 @@ fun rememberChallengeGate(): ChallengeGateState {
 
     val mode by container.settings.challengeMode.collectAsState(initial = "")
     val type by container.settings.challengeType.collectAsState(initial = "quote")
-    val customText by container.settings.challengeText.collectAsState(initial = "")
     val pinHash by container.settings.pinHash.collectAsState(initial = "")
 
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -90,7 +89,6 @@ fun rememberChallengeGate(): ChallengeGateState {
 
             else -> AwarenessChallenge(
                 type = type,
-                customText = customText,
                 onSuccess = { pending = null; action() },
                 onCancel = { pending = null }
             )
@@ -140,38 +138,54 @@ private fun PinChallenge(expectedHash: String, onSuccess: () -> Unit, onCancel: 
 }
 
 @Composable
-private fun AwarenessChallenge(type: String, customText: String, onSuccess: () -> Unit, onCancel: () -> Unit) {
-    val quote = remember { customText.ifBlank { ChallengeEngine.pickQuote(Random(System.nanoTime())) } }
+private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: () -> Unit) {
+    val quote = remember { ChallengeEngine.pickQuote(Random(System.nanoTime())) }
     val problem = remember { ChallengeEngine.randomMath(Random(System.nanoTime())) }
     var input by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
 
     val isMath = type == "math"
-    val shown = if (isMath) problem.prompt() else quote
 
     AlertDialog(
         onDismissRequest = onCancel,
         title = {
             Text(
-                if (isMath) "Solve to continue" else "Type to confirm",
+                if (isMath) "Solve to continue" else "Type the quote",
                 fontWeight = FontWeight.SemiBold
             )
         },
         text = {
             Column {
-                Text(
-                    shown,
-                    style = MaterialTheme.typography.bodyLarge,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                )
-                if (!isMath) {
+                if (isMath) {
                     Text(
-                        "This pause is intentional — retype the sentence above.",
+                        problem.prompt(),
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp)
+                    )
+                } else {
+                    Text(
+                        quote.text,
+                        style = MaterialTheme.typography.bodyLarge,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp, bottom = 6.dp)
+                    )
+                    Text(
+                        "— ${quote.source}",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Text(
+                        "Type it exactly. Capitals and punctuation count.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 14.dp)
                     )
                     Spacer(Modifier.height(10.dp))
                 }
@@ -193,7 +207,7 @@ private fun AwarenessChallenge(type: String, customText: String, onSuccess: () -
         confirmButton = {
             TextButton(enabled = input.isNotBlank(), onClick = {
                 val ok = if (isMath) ChallengeEngine.checkMath(input, problem)
-                else ChallengeEngine.matchesQuote(input, quote)
+                else ChallengeEngine.matchesQuote(input, quote.text)
                 if (ok) onSuccess() else { error = true; input = "" }
             }) { Text("Confirm") }
         },

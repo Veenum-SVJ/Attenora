@@ -55,7 +55,7 @@ fun UnlockChallengeDialog(
     val shown = when {
         isMath -> problem.prompt()
         isIntent -> "Write why you're unlocking, then confirm."
-        else -> quote
+        else -> quote.text
     }
     val minIntent = 8
     val canConfirm = !busy && when {
@@ -94,6 +94,15 @@ fun UnlockChallengeDialog(
                         .fillMaxWidth()
                         .padding(vertical = 8.dp)
                 )
+                if (!isMath && !isIntent) {
+                    Text(
+                        "— ${quote.source}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it; error = false },
@@ -127,7 +136,7 @@ fun UnlockChallengeDialog(
                 val ok = when {
                     isMath -> ChallengeEngine.checkMath(input, problem)
                     isIntent -> input.trim().length >= minIntent
-                    else -> ChallengeEngine.matchesQuote(input, quote)
+                    else -> ChallengeEngine.matchesQuote(input, quote.text)
                 }
                 if (!ok) {
                     error = true

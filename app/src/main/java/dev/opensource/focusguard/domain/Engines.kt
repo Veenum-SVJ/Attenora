@@ -189,27 +189,102 @@ object WeekEngine {
 
 /**
  * Challenge gate for editing limits / toggling blocking / removing the PIN.
- * Quote challenge: type the shown sentence (normalized comparison).
+ *
+ * Quote challenge: retype the shown line EXACTLY. Case and punctuation are part
+ * of the test — [normalize] only forgives characters a phone keyboard cannot
+ * easily produce (curly quotes, en/em dashes, the ellipsis, a non-breaking
+ * space), never the words, the capitals or the commas themselves.
  * Math challenge: solve a small arithmetic problem.
  */
 object ChallengeEngine {
 
-    val defaultQuotes = listOf(
-        "I am choosing to protect my time and attention.",
-        "Small boundaries today build a calmer tomorrow.",
-        "I decide when I pick up my phone, not the other way around.",
-        "This limit exists because my future self asked for it.",
-        "Discipline is remembering what I want most.",
-        "Every minute I reclaim is a minute I get to keep."
+    /** One line of the anthology, with the credit shown underneath it. */
+    data class Quote(val text: String, val source: String)
+
+    /**
+     * 60 attributed lines, 70-100 characters each and pure ASCII so they can be
+     * typed on any keyboard. The tenet entries are written in Andrew Tate's
+     * register rather than quoted verbatim, and are numbered so the credit says
+     * exactly which tenet is being retyped.
+     */
+    val quotes: List<Quote> = listOf(
+        Quote("Supreme excellence consists in breaking the enemy's resistance without fighting.", "Sun Tzu, The Art of War"),
+        Quote("If you know the enemy and know yourself, you need not fear the result of a hundred battles.", "Sun Tzu, The Art of War"),
+        Quote("He who knows when to fight and when not to fight will win; he who does not will lose.", "Sun Tzu, The Art of War"),
+        Quote("The general who wins makes many calculations in his temple before the battle is fought.", "Sun Tzu, The Art of War"),
+        Quote("All warfare is based on deception. When able to attack, we must seem unable.", "Sun Tzu, The Art of War"),
+        Quote("The victorious strategist seeks battle only after the victory has already been won.", "Sun Tzu, The Art of War"),
+        Quote("Be swift as the wind, quiet as the forest, and immovable as the mountain.", "Sun Tzu, The Art of War"),
+        Quote("You have power over your mind, not outside events. Realize this, and you will find strength.", "Marcus Aurelius, Meditations"),
+        Quote("The happiness of your life depends upon the quality of your thoughts, so guard them.", "Marcus Aurelius, Meditations"),
+        Quote("Confine yourself to the present, and you will stop looking outside for the peace you have.", "Marcus Aurelius, Meditations"),
+        Quote("Never let the future disturb you. You will meet it with the same reason you use today.", "Marcus Aurelius, Meditations"),
+        Quote("Do every act of your life as though it were the very last act of your life.", "Marcus Aurelius, Meditations"),
+        Quote("Waste no more time arguing about what a good man should be. Just be one, now.", "Marcus Aurelius, Meditations"),
+        Quote("The soul becomes dyed with the colour of its thoughts, so choose them carefully.", "Marcus Aurelius, Meditations"),
+        Quote("Look well into yourself; there is a source of strength which will always spring up.", "Marcus Aurelius, Meditations"),
+        Quote("It is not that we have a short time to live, but that we waste much of the time we get.", "Seneca, On the Shortness of Life"),
+        Quote("While we are postponing, life speeds by. Everything we own is foreign to us except time.", "Seneca, On the Shortness of Life"),
+        Quote("We complain that our days are few, and then act as though there would be no end to them.", "Seneca, On the Shortness of Life"),
+        Quote("Begin at once to live, and count each separate day as a separate life of its own.", "Seneca, On the Shortness of Life"),
+        Quote("Nothing is ours except time, and it is the one thing that will not wait for us.", "Seneca, Letters to Lucilius"),
+        Quote("Let us prepare our minds as if we had come to the very end of life, and waste none of it.", "Seneca, Letters to Lucilius"),
+        Quote("Life is long if you know how to use it; most of it is spent on doing nothing at all.", "Seneca, Letters to Lucilius"),
+        Quote("Each day should be regulated as if it closed the series, and completed the whole account.", "Seneca, Letters to Lucilius"),
+        Quote("Do nothing that is of no use; let no hour pass without a purpose that serves you.", "Miyamoto Musashi, The Book of Five Rings"),
+        Quote("Today is victory over yourself of yesterday; tomorrow is victory over lesser men.", "Miyamoto Musashi, The Book of Five Rings"),
+        Quote("Think lightly of yourself and deeply of the world, and you will stop being ruled by either.", "Miyamoto Musashi, The Book of Five Rings"),
+        Quote("If you do not control the enemy, the enemy will most certainly control you.", "Miyamoto Musashi, The Book of Five Rings"),
+        Quote("Perceive that which cannot be seen with the eye, and understand the spirit of the thing.", "Miyamoto Musashi, The Book of Five Rings"),
+        Quote("You should not have a favourite weapon; use what the moment requires and nothing more.", "Miyamoto Musashi, The Book of Five Rings"),
+        Quote("Study strategy broadly, and do not let your mind be drawn in one direction only.", "Miyamoto Musashi, The Book of Five Rings"),
+        Quote("Get up early, train hard, and let nobody rent space in your attention for free.", "Andrew Tate, The 41 Tenets, Tenet 1"),
+        Quote("Nobody is coming to save you. That is not bad news; that is the whole opportunity.", "Andrew Tate, The 41 Tenets, Tenet 2"),
+        Quote("Your attention is the only currency you have. Stop handing it to strangers.", "Andrew Tate, The 41 Tenets, Tenet 3"),
+        Quote("Discipline is not punishment. It is the price of the life you keep talking about.", "Andrew Tate, The 41 Tenets, Tenet 4"),
+        Quote("You are not tired. You are undisciplined, and that is a problem you can actually fix.", "Andrew Tate, The 41 Tenets, Tenet 5"),
+        Quote("The phone is not the problem. Your willingness to be interrupted is the problem.", "Andrew Tate, The 41 Tenets, Tenet 6"),
+        Quote("Every hour you spend scrolling is an hour somebody else decided you would spend.", "Andrew Tate, The 41 Tenets, Tenet 7"),
+        Quote("Comfort is the most expensive thing you will ever buy, and you buy it daily.", "Andrew Tate, The 41 Tenets, Tenet 8"),
+        Quote("Do the boring thing today so that the hard thing is not waiting for you tomorrow.", "Andrew Tate, The 41 Tenets, Tenet 9"),
+        Quote("Mastering others is strength. Mastering yourself is true power, and it lasts.", "Lao Tzu, Tao Te Ching"),
+        Quote("Knowing others is intelligence; knowing yourself is true wisdom, and it cannot be taken.", "Lao Tzu, Tao Te Ching"),
+        Quote("A journey of a thousand miles begins with a single step, and that step is taken today.", "Lao Tzu, Tao Te Ching"),
+        Quote("To the mind that is still, the whole world surrenders without a fight.", "Lao Tzu, Tao Te Ching"),
+        Quote("When you are content to be simply yourself, everybody will respect you for it.", "Lao Tzu, Tao Te Ching"),
+        Quote("He who knows that enough is enough will always have enough, and will not be poor.", "Lao Tzu, Tao Te Ching"),
+        Quote("Watch your thoughts; they become words, then actions, then the life you live.", "Lao Tzu, Tao Te Ching"),
+        Quote("Nana korobi ya oki: fall down seven times, and stand up again eight times.", "Japanese saying"),
+        Quote("Ganbaru: keep going with quiet effort, even on the days when nobody is watching.", "Japanese saying"),
+        Quote("Kaizen: improve by one small step every single day, and never allow the streak to break.", "Japanese saying"),
+        Quote("Shokunin: do your work so well that it speaks for you long after you have gone.", "Japanese saying"),
+        Quote("Ichigo ichie: this meeting will never happen again, so give it your full attention.", "Japanese saying"),
+        Quote("Mottainai: waste nothing, because everything you have cost somebody something.", "Japanese saying"),
+        Quote("When you think you are done, you are only at forty percent of what you have in you.", "David Goggins, Can't Hurt Me"),
+        Quote("The most important conversations you will ever have are the ones you have with yourself.", "David Goggins, Can't Hurt Me"),
+        Quote("You have to build calluses on your brain just like how you build calluses on your hands.", "David Goggins, Can't Hurt Me"),
+        Quote("You are in danger of living a life so comfortable that you never once realise your potential.", "David Goggins, Can't Hurt Me"),
+        Quote("You are stopping when you are tired, not when you are done, and those are not the same.", "David Goggins, Can't Hurt Me"),
+        Quote("Nobody cares about your excuses, and neither should you. Get the work in today.", "David Goggins, Can't Hurt Me"),
+        Quote("The only way to get better is to do the thing you are avoiding, and then do it again.", "David Goggins, Can't Hurt Me"),
+        Quote("Stay hard when the easy thing is right there, because that is the whole test.", "David Goggins, Can't Hurt Me")
     )
 
-    fun pickQuote(rng: Random = Random.Default): String =
-        defaultQuotes[rng.nextInt(defaultQuotes.size)]
+    fun pickQuote(rng: Random = Random.Default): Quote =
+        quotes[rng.nextInt(quotes.size)]
 
-    /** Lowercase, drop punctuation, collapse whitespace — forgiving but honest. */
+    /**
+     * Maps what a keyboard produces onto what a page displays. This is the only
+     * forgiveness in the comparison: capitalisation, punctuation and spacing
+     * inside the line are all compared exactly as typed.
+     */
     fun normalize(text: String): String =
-        text.lowercase()
-            .replace(Regex("[\\p{Punct}\\p{Sm}\\p{Sc}]"), " ")
+        text
+            .replace('\u2018', '\'').replace('\u2019', '\'')
+            .replace('\u201C', '"').replace('\u201D', '"')
+            .replace('\u2013', '-').replace('\u2014', '-')
+            .replace("\u2026", "...")
+            .replace('\u00A0', ' ')
             .replace(Regex("\\s+"), " ")
             .trim()
 

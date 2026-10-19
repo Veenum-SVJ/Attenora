@@ -204,14 +204,15 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     val reelOpacity by container.settings.reelOverlayOpacity.collectAsState(initial = 1f)
     val challengeMode by container.settings.challengeMode.collectAsState(initial = ChallengeMode.NONE)
     val challengeType by container.settings.challengeType.collectAsState(initial = "quote")
-    val challengeText by container.settings.challengeText.collectAsState(initial = "")
     val pinHash by container.settings.pinHash.collectAsState(initial = "")
     val hasPin = pinHash != null && pinHash != ""
 
     var showHourPicker by remember { mutableStateOf(false) }
     var showPinDialog by remember { mutableStateOf(false) }
     var showRemovePinConfirm by remember { mutableStateOf(false) }
-    var customSentence by rememberSaveable { mutableStateOf<String?>(null) }
+    // Tapping PIN with no PIN set opens the PIN dialog and arms the mode, so
+    // "protect limits with a PIN" is one action instead of two.
+    var pinRequested by rememberSaveable { mutableStateOf(false) }
 
     SettingsPage("Usage Limits and Tracking", onBack) {
         SectionLabel("Tracking")
@@ -269,8 +270,13 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                     ChoicePill("Off", !modeActive) {
                         scope.launch { container.settings.setChallengeMode(ChallengeMode.NONE) }
                     }
-                    ChoicePill("PIN", challengeMode == ChallengeMode.PIN, enabled = hasPin) {
-                        scope.launch { container.settings.setChallengeMode(ChallengeMode.PIN) }
+                    ChoicePill("PIN", challengeMode == ChallengeMode.PIN) {
+                        if (hasPin) {
+                            scope.launch { container.settings.setChallengeMode(ChallengeMode.PIN) }
+                        } else {
+                            pinRequested = true
+                            showPinDialog = true
+                        }
                     }
                     ChoicePill(
                         "Math challenge",
@@ -282,7 +288,7 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                         }
                     }
                     ChoicePill(
-                        "Long word",
+                        "Type the quote",
                         challengeMode == ChallengeMode.CHALLENGE && challengeType != "math"
                     ) {
                         scope.launch {
@@ -294,32 +300,17 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                 if (!hasPin) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Set the PIN below first to be able to pick PIN protection.",
+                        "PIN protection asks for a PIN you choose. Tap PIN to set one.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 if (challengeMode == ChallengeMode.CHALLENGE && challengeType != "math") {
-                    Spacer(Modifier.height(12.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        OutlinedTextField(
-                            value = customSentence ?: challengeText,
-                            onValueChange = { customSentence = it.take(120) },
-                            label = { Text("Your long word or sentence (optional)") },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(Modifier.width(8.dp))
-                        TextButton(onClick = {
-                            scope.launch {
-                                container.settings.setChallengeText(customSentence ?: challengeText)
-                            }
-                        }) { Text("Save") }
-                    }
-                    Spacer(Modifier.height(4.dp))
+                    Spacer(Modifier.height(10.dp))
                     Text(
-                        "It must be retyped exactly before any limit change goes through. " +
-                            "Leave it alone to keep the built-in sentence.",
+                        "One of 60 lines, picked at random each time. It must be " +
+                            "retyped exactly — capital letters and punctuation included — " +
+                            "before a limit change goes through.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -365,9 +356,15 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     }
     if (showPinDialog) {
         PinSetupDialog(
-            onDismiss = { showPinDialog = false },
+            onDismiss = { showPinDialog = false; pinRequested = false },
             onSaved = { hash, salt ->
-                scope.launch { container.settings.setPin(hash, salt) }
+                scope.launch {
+                    container.settings.setPin(hash, salt)
+                    // The PIN was asked for by the PIN pill: turning the mode on
+                    // now is what the tap meant.
+                    if (pinRequested) container.settings.setChallengeMode(ChallengeMode.PIN)
+                }
+                pinRequested = false
                 showPinDialog = false
             }
         )

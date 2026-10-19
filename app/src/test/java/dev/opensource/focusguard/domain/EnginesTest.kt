@@ -329,24 +329,44 @@ class WeekEngineTest {
 class ChallengeEngineTest {
 
     @Test
-    fun `quote matching is forgiving about case spacing and punctuation`() {
+    fun `quote matching is exact about case and punctuation`() {
         val quote = "Discipline is remembering what I want most."
-        assertTrue(ChallengeEngine.matchesQuote("discipline is remembering what i want most", quote))
-        assertTrue(ChallengeEngine.matchesQuote("  Discipline   is remembering what I want most!! ", quote))
-        assertFalse(ChallengeEngine.matchesQuote("discipline is remembering what I want", quote))
+        assertTrue(ChallengeEngine.matchesQuote(quote, quote))
+        // A capital that isn't there, and one that is, are different answers.
+        assertFalse(ChallengeEngine.matchesQuote("discipline is remembering what I want most.", quote))
+        assertFalse(ChallengeEngine.matchesQuote("Discipline is remembering what I want most", quote))
+        assertFalse(ChallengeEngine.matchesQuote("Discipline is remembering what I want most!", quote))
+        // Only the whitespace around and between the words is forgiven.
+        assertTrue(
+            ChallengeEngine.matchesQuote("  Discipline   is remembering what I want most.  ", quote)
+        )
         assertFalse(ChallengeEngine.matchesQuote("", quote))
     }
 
     @Test
-    fun `normalize collapses whitespace and strips punctuation`() {
-        assertEquals("small boundaries today build a calmer tomorrow", ChallengeEngine.normalize("Small boundaries today, build a calmer tomorrow!"))
+    fun `normalize maps look-alikes onto keyboard characters`() {
+        assertEquals("It's fine - really...", ChallengeEngine.normalize("It\u2019s fine \u2013 really\u2026"))
+        assertEquals("a b", ChallengeEngine.normalize("a\u00A0b"))
+        assertEquals("\"quoted\"", ChallengeEngine.normalize("\u201Cquoted\u201D"))
+        assertEquals("As typed.", ChallengeEngine.normalize("As typed."))
+    }
+
+    @Test
+    fun `every quote is typable and inside the length band`() {
+        assertTrue(ChallengeEngine.quotes.size >= 60)
+        ChallengeEngine.quotes.forEach { q ->
+            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 70..100)
+            assertTrue("non-ascii: ${q.text}", q.text.all { it.code in 0x20..0x7E })
+            assertTrue("no credit: ${q.text}", q.source.isNotBlank())
+            assertTrue(ChallengeEngine.matchesQuote(q.text, q.text))
+        }
     }
 
     @Test
     fun `pick quote always returns a configured quote`() {
         val rng = Random(42)
         repeat(20) {
-            assertTrue(ChallengeEngine.pickQuote(rng) in ChallengeEngine.defaultQuotes)
+            assertTrue(ChallengeEngine.pickQuote(rng) in ChallengeEngine.quotes)
         }
     }
 
