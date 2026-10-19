@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -108,7 +109,12 @@ private fun SettingsPage(
     }
 }
 
-/** Pill selector used by the theme, gate and reset-hour choices. */
+/**
+ * Pill selector used by the theme, gate and reset-hour choices.
+ *
+ * Sized to the 48dp minimum rather than to its label: these pills are the whole
+ * choice on their row, so the tap target is the pill itself.
+ */
 @Composable
 internal fun ChoicePill(
     label: String,
@@ -118,13 +124,15 @@ internal fun ChoicePill(
 ) {
     Box(
         Modifier
+            .heightIn(min = 48.dp)
             .clip(RoundedCornerShape(50))
             .background(
                 if (active) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
                 else MaterialTheme.colorScheme.surfaceVariant
             )
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 9.dp)
+            .padding(horizontal = 16.dp),
+        contentAlignment = Alignment.Center
     ) {
         Text(
             label,
@@ -357,7 +365,7 @@ private fun HourChoiceDialog(current: Int, onDismiss: () -> Unit, onPick: (Int) 
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onPick(hour) }
-                            .padding(vertical = 12.dp, horizontal = 4.dp),
+                            .padding(vertical = 14.dp, horizontal = 4.dp),
                         style = MaterialTheme.typography.bodyLarge,
                         fontWeight = if (hour == current) FontWeight.SemiBold else FontWeight.Normal,
                         color = if (hour == current) MaterialTheme.colorScheme.primary
