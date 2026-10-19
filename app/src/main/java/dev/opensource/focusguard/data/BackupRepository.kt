@@ -106,6 +106,7 @@ class BackupRepository(private val db: AppDatabase) {
         db.categoryDao().deleteAll()
         db.hiddenItemDao().deleteAll()
         db.elementRuleDao().deleteAll()
+        db.reelCountDao().deleteAll()
         db.sessionGrantDao().deleteAll()
         db.blockEventDao().clear()
         db.metaDao().clear()

@@ -36,6 +36,20 @@ private val MIGRATION_2_3 = object : Migration(2, 3) {
     }
 }
 
+/**
+ * v3 → v4: the reel counter gained per-app short-video counts. A new table
+ * rather than a column, so the existing usage history is untouched.
+ */
+private val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `reel_counts` (" +
+                "`day` TEXT NOT NULL, `packageName` TEXT NOT NULL, " +
+                "`count` INTEGER NOT NULL, PRIMARY KEY(`day`, `packageName`))"
+        )
+    }
+}
+
 class FocusApp : Application() {
     lateinit var container: AppContainer
         private set
@@ -57,7 +71,7 @@ class AppContainer(val app: Context) {
     private val containerInitT0 = android.os.SystemClock.elapsedRealtime()
 
     val db: AppDatabase = Room.databaseBuilder(app, AppDatabase::class.java, "focusguard.db")
-        .addMigrations(MIGRATION_2_3)
+        .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
         .fallbackToDestructiveMigration()
         .build()
 
@@ -107,6 +121,14 @@ class AppContainer(val app: Context) {
     /** True while FocusGuard itself has the grayscale filter applied. */
     val grayActive: StateFlow<Boolean> =
         settings.grayActive.stateIn(scope, SharingStarted.Eagerly, false)
+
+    /**
+     * Reel counter switch. Cached as a StateFlow because the accessibility
+     * service reads it on every scroll event; a DataStore read per swipe would
+     * be a disk hit on the main thread's critical path.
+     */
+    val reelCounterOn: StateFlow<Boolean> =
+        settings.reelCounterOn.stateIn(scope, SharingStarted.Eagerly, true)
 
     /**
      * Warm cache of the onboarding flag. `collectAsState()` on a StateFlow uses

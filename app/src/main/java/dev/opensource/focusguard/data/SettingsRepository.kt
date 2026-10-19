@@ -61,6 +61,7 @@ class SettingsRepository(private val context: Context) {
         val CHALLENGE_TEXT = stringPreferencesKey("challenge_text")
         val IGNORE_WEBSITES = booleanPreferencesKey("ignore_websites")
         val COUNTDOWN_ON = booleanPreferencesKey("countdown_on")
+        val REEL_COUNTER_ON = booleanPreferencesKey("reel_counter_on")
         val LAUNCHER_ICON = intPreferencesKey("launcher_icon")
         val ICON_ACCENT = intPreferencesKey("icon_accent")
 
@@ -116,6 +117,8 @@ class SettingsRepository(private val context: Context) {
     val challengeText: Flow<String> = context.dataStore.data.map { it[Keys.CHALLENGE_TEXT] ?: "" }
     val ignoreWebsites: Flow<Boolean> = context.dataStore.data.map { it[Keys.IGNORE_WEBSITES] ?: false }
     val countdownOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.COUNTDOWN_ON] ?: true }
+    /** Short-video counter + its live on-screen count. On by default. */
+    val reelCounterOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.REEL_COUNTER_ON] ?: true }
     val launcherIcon: Flow<Int> = context.dataStore.data.map { it[Keys.LAUNCHER_ICON] ?: 0 }
     val iconAccent: Flow<Int> = context.dataStore.data.map { it[Keys.ICON_ACCENT] ?: 0 }
 
@@ -180,6 +183,7 @@ class SettingsRepository(private val context: Context) {
     suspend fun setChallengeText(text: String) = context.dataStore.edit { it[Keys.CHALLENGE_TEXT] = text }
     suspend fun setIgnoreWebsites(on: Boolean) = context.dataStore.edit { it[Keys.IGNORE_WEBSITES] = on }
     suspend fun setCountdownOn(on: Boolean) = context.dataStore.edit { it[Keys.COUNTDOWN_ON] = on }
+    suspend fun setReelCounter(on: Boolean) = context.dataStore.edit { it[Keys.REEL_COUNTER_ON] = on }
     suspend fun setLauncherIcon(index: Int) = context.dataStore.edit { it[Keys.LAUNCHER_ICON] = index.coerceIn(0, 5) }
     suspend fun setIconAccent(index: Int) = context.dataStore.edit { it[Keys.ICON_ACCENT] = index.coerceIn(0, 5) }
 

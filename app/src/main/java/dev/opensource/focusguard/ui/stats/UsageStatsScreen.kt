@@ -42,6 +42,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,9 +52,11 @@ import dev.opensource.focusguard.data.DailyUsage
 import dev.opensource.focusguard.data.HourTotals
 import dev.opensource.focusguard.data.HiddenKind
 import dev.opensource.focusguard.data.HiddenItem
+import dev.opensource.focusguard.data.ReelCount
 import dev.opensource.focusguard.domain.WeekEngine
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
+import dev.opensource.focusguard.ui.common.FgDivider
 import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.PageHeader
@@ -470,6 +474,13 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
             }
         }
 
+        // Reel counter: one slim line under the chart, expanding to the per-app
+        // split. Today only — the counter answers "how deep am I in right now",
+        // and its rows are stored per usage day.
+        if (isToday) {
+            item { ReelCounterRow(day = range.from.toString()) }
+        }
+
         // App list — ranked by the selected metric (usage time or opens).
         item {
             Row(
@@ -740,6 +751,80 @@ private fun LegendDot(color: androidx.compose.ui.graphics.Color, label: String) 
     )
     Spacer(Modifier.width(6.dp))
     Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+
+/**
+ * "47 reels today" under the chart. Collapsed it is one line; tapped it opens
+ * the per-source split, so the single number never needs a screen of its own.
+ * Hidden entirely when the counter is off or nothing has been counted.
+ */
+@Composable
+private fun ReelCounterRow(day: String) {
+    val container = LocalAppContainer.current
+    val enabled by container.reelCounterOn.collectAsState()
+    var rows by remember(day) { mutableStateOf<List<ReelCount>>(emptyList()) }
+    var expanded by rememberSaveable(day) { mutableStateOf(false) }
+
+    LaunchedEffect(day, enabled) {
+        if (!enabled) return@LaunchedEffect
+        container.db.reelCountDao().forDayFlow(day).collect { rows = it }
+    }
+
+    if (!enabled || rows.isEmpty()) return
+    val total = rows.sumOf { it.count }
+
+    FgCard(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .semantics(mergeDescendants = true) {
+                    // One node for TalkBack: "65 reels today, Collapsed".
+                    stateDescription = if (expanded) "Expanded" else "Collapsed"
+                }
+                .padding(start = 16.dp, end = 12.dp, top = 14.dp, bottom = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "$total ${if (total == 1) "reel" else "reels"} today",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier.weight(1f)
+            )
+            FgIcon(
+                if (expanded) FgIcons.ChevronUp else FgIcons.ChevronDown,
+                if (expanded) "Hide per-app counts" else "Show per-app counts",
+                size = 18.dp
+            )
+        }
+        if (expanded) {
+            rows.forEach { row ->
+                FgDivider(inset = 16.dp)
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    AppIcon(row.packageName, size = 30.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        appLabel(LocalContext.current, row.packageName),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        row.count.toString(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+    }
 }
 
 

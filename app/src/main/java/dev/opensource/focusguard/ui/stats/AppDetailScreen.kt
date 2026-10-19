@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.data.HiddenItem
 import dev.opensource.focusguard.data.HiddenKind
 import dev.opensource.focusguard.domain.CategoryClassifier
+import dev.opensource.focusguard.enforcement.Reels
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
 import dev.opensource.focusguard.ui.common.FgIcon
@@ -57,6 +58,9 @@ fun AppDetailScreen(
     var todayMs by remember { mutableStateOf(0L) }
     var weekTotal by remember { mutableStateOf(0L) }
     var categoryNames by remember { mutableStateOf<List<String>>(emptyList()) }
+    var reelsToday by remember { mutableStateOf(0) }
+
+    val reelsOn by container.reelCounterOn.collectAsState()
 
     LaunchedEffect(pkg) {
         runCatching { container.usage.reconcileNow() }
@@ -70,6 +74,10 @@ fun AppDetailScreen(
         val key = "app:$pkg"
         val catIds = container.db.categoryMemberDao().all().filter { it.key == key }.map { it.categoryId }
         categoryNames = container.db.categoryDao().all().filter { it.id in catIds }.map { it.name }
+        // Counted under the canonical package, since lite/variant builds of the
+        // same app share one counter (see Reels).
+        reelsToday = container.db.reelCountDao()
+            .forApp(Reels.creditKey(pkg), container.usage.todayKey())?.count ?: 0
     }
 
     val label = remember(pkg) { appLabel(context, pkg) }
@@ -97,6 +105,15 @@ fun AppDetailScreen(
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        if (reelsOn && reelsToday > 0) {
+                            Text(
+                                "$reelsToday ${
+                                    if (reelsToday == 1) "reel" else "reels"
+                                } today",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
                 Spacer(Modifier.height(18.dp))

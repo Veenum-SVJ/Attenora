@@ -59,6 +59,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
             restoreIfOurs() // never leave the display stuck monochrome behind a locked screen
             stopLimitWatch() // nothing is foreground while the screen is off
+            dropReelOverlay() // …and nothing should keep a count over the lock screen
         }
     }
 
@@ -130,6 +131,19 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(limitWatcher)
     }
 
+    // --- reel counter state
+    // Marker-first: [reelMarked] flips on only when a supported app is actually
+    // showing its short-video feed, and a swipe then adds one to today's count.
+    // The marker scan is throttled; the per-swipe path is a boolean read.
+    private var reelView: ReelCounterView? = null
+    private var reelShown = false
+    private var reelPkg: String? = null
+    private var reelMarked = false
+    private var lastReelScanAt = 0L
+    private var lastReelCountAt = 0L
+
+    private val reelFadeOut = Runnable { fadeReelOut() }
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         container.a11yConnected = true
@@ -156,6 +170,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             updateCountdown(it)
             applyGrayscale(it)
             startLimitWatch(it)
+            onReelForeground(it)
         }
     }
 
@@ -172,6 +187,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 applyGrayscale(pkg)
                 resetAttribution()
                 runDetection(pkg)
+                onReelForeground(pkg)
                 if (pkg in BROWSERS) checkWebsite(e, pkg)
                 startLimitWatch(pkg)
             }
@@ -183,7 +199,11 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                         runDetection(pkg)
                     }
                 }
+                noteReelSurface(pkg)
                 if (pkg in BROWSERS) checkWebsite(e, pkg)
+            }
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
+                if (isVerticalScroll(e)) noteReelScroll(pkg)
             }
         }
     }
@@ -458,6 +478,198 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         lastSeen.clear()
     }
 
+    // --- reel counter -------------------------------------------------------
+
+    /** Foreground changed: reset feed mode and take the count off the old app. */
+    private fun onReelForeground(pkg: String) {
+        if (!container.reelCounterOn.value) {
+            clearReelState()
+            return
+        }
+        if (reelPkg != pkg) {
+            reelPkg = pkg
+            reelMarked = false
+            lastReelScanAt = 0L
+            dropReelOverlay()
+        }
+        if (!Reels.appliesTo(pkg)) {
+            reelMarked = false
+            dropReelOverlay()
+            return
+        }
+        scanReelSurface(pkg)
+    }
+
+    /**
+     * Called on content changes inside a supported app. Throttled, because a
+     * playing reel emits content updates continuously and each scan is a tree
+     * walk; one look every [REEL_SCAN_INTERVAL_MS] is plenty to notice that the
+     * feed opened or closed.
+     */
+    private fun noteReelSurface(pkg: String) {
+        if (!container.reelCounterOn.value) {
+            if (reelShown || reelMarked) clearReelState()
+            return
+        }
+        if (!Reels.appliesTo(pkg)) return
+        if (reelPkg != pkg) {
+            reelPkg = pkg
+            reelMarked = false
+            dropReelOverlay()
+        }
+        val now = System.currentTimeMillis()
+        if (now - lastReelScanAt < REEL_SCAN_INTERVAL_MS) return
+        lastReelScanAt = now
+        scanReelSurface(pkg)
+    }
+
+    /**
+     * Sets [reelMarked] by looking for a short-video marker on a node big
+     * enough to be the video itself rather than a tab button — Instagram keeps
+     * a "Reels" tab on every screen, so a bare label match would count its home
+     * feed too. See [Reels].
+     */
+    private fun scanReelSurface(pkg: String) {
+        val markers = Reels.markersFor(pkg)
+        if (markers.isEmpty()) {
+            reelMarked = false
+            return
+        }
+        val root = rootInActiveWindow ?: return
+        val dm = resources.displayMetrics
+        val bigEnough = (dm.widthPixels.toLong() * dm.heightPixels * REEL_SURFACE_RATIO).toLong()
+        val acceptVideoClass = Reels.isFullFeed(pkg)
+        val queue = ArrayDeque<AccessibilityNodeInfo>()
+        queue.add(root)
+        var visited = 0
+        var found = false
+        try {
+            while (queue.isNotEmpty() && visited < REEL_MAX_NODES) {
+                val node = queue.poll() ?: continue
+                visited++
+                val rect = Rect()
+                node.getBoundsInScreen(rect)
+                if (rect.width().toLong() * rect.height() >= bigEnough) {
+                    val id = node.viewIdResourceName ?: ""
+                    val label = node.text?.toString()
+                        ?: node.contentDescription?.toString() ?: ""
+                    val cls = node.className?.toString() ?: ""
+                    val named = markers.any {
+                        id.contains(it, ignoreCase = true) ||
+                            label.contains(it, ignoreCase = true)
+                    }
+                    val playingVideo = acceptVideoClass &&
+                        Reels.videoClasses.any { cls.contains(it, ignoreCase = true) }
+                    if (named || playingVideo) {
+                        found = true
+                        break
+                    }
+                }
+                for (i in 0 until node.childCount) {
+                    node.getChild(i)?.let { queue.add(it) }
+                }
+            }
+        } catch (_: Exception) {
+            return // never crash the accessibility pipeline
+        }
+        reelMarked = found
+    }
+
+    /**
+     * One short video per swipe. The feed pages a whole clip at a time, so one
+     * scroll event is one video — but a fling can emit a burst, hence the floor
+     * between counts.
+     */
+    private fun noteReelScroll(pkg: String) {
+        if (!reelMarked) return
+        if (!container.reelCounterOn.value) return
+        if (reelPkg != pkg) return
+        val now = System.currentTimeMillis()
+        if (now - lastReelCountAt < REEL_MIN_GAP_MS) return
+        lastReelCountAt = now
+
+        val credit = Reels.creditKey(pkg)
+        container.scope.launch {
+            runCatching {
+                val day = container.usage.todayKey()
+                container.db.reelCountDao().add(day, credit, 1)
+                val total = container.db.reelCountDao().totalForDay(day) ?: return@runCatching
+                mainHandler.post { showReelCount(total) }
+            }
+        }
+    }
+
+    /**
+     * Feeds page vertically. A horizontal swipe — Instagram's "next story", a
+     * carousel inside a post — is not a new video and must not count.
+     */
+    private fun isVerticalScroll(e: AccessibilityEvent): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) return true
+        val dx = e.scrollDeltaX
+        val dy = e.scrollDeltaY
+        if (dx == 0 && dy == 0) return true
+        return kotlin.math.abs(dy) >= kotlin.math.abs(dx)
+    }
+
+    private fun showReelCount(total: Int) {
+        if (!container.reelCounterOn.value) return
+        val existing = reelView
+        val view: ReelCounterView = if (reelShown && existing != null) {
+            existing.count = total
+            existing
+        } else {
+            val fresh = ReelCounterView(this).apply {
+                count = total
+                alpha = 0f
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+                PixelFormat.TRANSLUCENT
+            ).apply { gravity = Gravity.CENTER }
+            val added = runCatching {
+                getSystemService(WindowManager::class.java).addView(fresh, params)
+            }.isSuccess
+            if (!added) return
+            reelView = fresh
+            reelShown = true
+            fresh
+        }
+        view.animate().cancel()
+        view.animate().alpha(1f).setDuration(REEL_FADE_IN_MS).start()
+        mainHandler.removeCallbacks(reelFadeOut)
+        mainHandler.postDelayed(reelFadeOut, REEL_HOLD_MS)
+    }
+
+    /** Gone a moment after the last swipe, back on the next one. */
+    private fun fadeReelOut() {
+        val view = reelView ?: return
+        view.animate().cancel()
+        view.animate().alpha(0f).setDuration(REEL_FADE_OUT_MS).start()
+    }
+
+    private fun dropReelOverlay() {
+        mainHandler.removeCallbacks(reelFadeOut)
+        if (!reelShown) {
+            reelView = null
+            return
+        }
+        runCatching { getSystemService(WindowManager::class.java).removeView(reelView) }
+        reelView = null
+        reelShown = false
+    }
+
+    private fun clearReelState() {
+        reelPkg = null
+        reelMarked = false
+        lastReelScanAt = 0L
+        dropReelOverlay()
+    }
+
     // --- grayscale ----------------------------------------------------------
 
     /** Apply/restore the per-app monochrome filter for [pkg]. */
@@ -542,6 +754,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacksAndMessages(null)
         hideCover()
         hidePill()
+        dropReelOverlay()
         lastDomain?.let { domain ->
             val elapsed = (System.currentTimeMillis() - lastCreditAt).coerceIn(0L, WEB_MAX_CREDIT_MS)
             if (elapsed >= WEB_MIN_CREDIT_MS) {
@@ -569,6 +782,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
         /** Upper bound between limit re-checks while an app stays foreground. */
         private const val MAX_WATCH_DELAY_MS = 4 * 60_000L
+
+        // Reel counter: a bounded marker scan, then one count per vertical swipe.
+        private const val REEL_MAX_NODES = 120
+        private const val REEL_SCAN_INTERVAL_MS = 2_000L
+        private const val REEL_MIN_GAP_MS = 450L
+        private const val REEL_SURFACE_RATIO = 0.65
+        private const val REEL_HOLD_MS = 2_600L
+        private const val REEL_FADE_IN_MS = 180L
+        private const val REEL_FADE_OUT_MS = 700L
 
         val BROWSERS = setOf(
             "com.android.chrome",

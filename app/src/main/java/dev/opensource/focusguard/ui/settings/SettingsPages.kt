@@ -172,6 +172,7 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     val resetHour by container.settings.resetHour.collectAsState(initial = 0)
     val mondayFirst by container.settings.weekMondayFirst.collectAsState(initial = true)
     val countdownOn by container.settings.countdownOn.collectAsState(initial = true)
+    val reelCounterOn by container.settings.reelCounterOn.collectAsState(initial = true)
     val challengeMode by container.settings.challengeMode.collectAsState(initial = ChallengeMode.NONE)
     val challengeType by container.settings.challengeType.collectAsState(initial = "quote")
     val challengeText by container.settings.challengeText.collectAsState(initial = "")
@@ -205,6 +206,14 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                 subtitle = "Shows time remaining while a limited app is open",
                 checked = countdownOn,
                 onCheckedChange = { on -> scope.launch { container.settings.setCountdownOn(on) } }
+            )
+            FgDivider(inset = 20.dp)
+            ToggleRow(
+                title = "Count reels and shorts",
+                subtitle = "One per video in Reels, Shorts, TikTok and Spotlight, " +
+                    "with a live count over the feed",
+                checked = reelCounterOn,
+                onCheckedChange = { on -> scope.launch { container.settings.setReelCounter(on) } }
             )
         }
 

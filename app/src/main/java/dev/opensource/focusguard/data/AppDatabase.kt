@@ -152,6 +152,21 @@ data class ElementUsage(
     val ms: Long
 )
 
+/**
+ * Short videos watched in one feed app on one usage day.
+ *
+ * Kept per app rather than as a single running total so the same rows can
+ * answer both questions the UI asks: "how many today, across everything" and
+ * "how many in each app". The app totals cannot be derived from anything else
+ * we already store, which is why this needs its own table.
+ */
+@Entity(tableName = "reel_counts", primaryKeys = ["day", "packageName"])
+data class ReelCount(
+    val day: String,
+    val packageName: String,
+    val count: Int
+)
+
 /** Variable-session grant: target blocked-vs-free window. */
 @Entity(tableName = "session_grants", primaryKeys = ["targetId"])
 data class SessionGrant(
@@ -438,6 +453,33 @@ interface ElementUsageDao {
 }
 
 @Dao
+interface ReelCountDao {
+    @Query(
+        """
+        INSERT INTO reel_counts(day, packageName, count)
+        VALUES(:day, :pkg, :n)
+        ON CONFLICT(day, packageName) DO UPDATE SET count = count + :n
+        """
+    )
+    suspend fun add(day: String, pkg: String, n: Int)
+
+    @Query("SELECT * FROM reel_counts WHERE day = :day ORDER BY count DESC")
+    fun forDayFlow(day: String): Flow<List<ReelCount>>
+
+    @Query("SELECT * FROM reel_counts WHERE packageName = :pkg AND day = :day")
+    suspend fun forApp(pkg: String, day: String): ReelCount?
+
+    @Query("SELECT SUM(count) FROM reel_counts WHERE day = :day")
+    suspend fun totalForDay(day: String): Int?
+
+    @Query("DELETE FROM reel_counts WHERE day < :cutoffDay")
+    suspend fun pruneOlderThan(cutoffDay: String)
+
+    @Query("DELETE FROM reel_counts")
+    suspend fun deleteAll()
+}
+
+@Dao
 interface SessionGrantDao {
     @Query("SELECT * FROM session_grants")
     fun observeAll(): Flow<List<SessionGrant>>
@@ -484,9 +526,9 @@ interface MetaDao {
         DailyUsage::class, HourlyUsage::class, UsageLimit::class, FocusSchedule::class,
         BlockedSite::class, BlockKeyword::class, Category::class, CategoryMember::class,
         HiddenItem::class, ElementRule::class, ElementUsage::class, SessionGrant::class,
-        BlockEvent::class, MetaEntry::class
+        BlockEvent::class, MetaEntry::class, ReelCount::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -501,6 +543,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun hiddenItemDao(): HiddenItemDao
     abstract fun elementRuleDao(): ElementRuleDao
     abstract fun elementUsageDao(): ElementUsageDao
+    abstract fun reelCountDao(): ReelCountDao
     abstract fun sessionGrantDao(): SessionGrantDao
     abstract fun blockEventDao(): BlockEventDao
     abstract fun metaDao(): MetaDao

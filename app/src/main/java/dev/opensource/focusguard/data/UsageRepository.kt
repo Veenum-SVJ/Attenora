@@ -189,6 +189,7 @@ class UsageRepository(
         db.metaDao().put(MetaEntry(KEY_CURSOR, now.toString()))
         db.dailyUsageDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
         db.hourlyUsageDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
+        db.reelCountDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
         }
     }
 }
