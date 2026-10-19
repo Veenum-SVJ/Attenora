@@ -61,6 +61,8 @@ class SettingsRepository(private val context: Context) {
         val IGNORE_WEBSITES = booleanPreferencesKey("ignore_websites")
         val COUNTDOWN_ON = booleanPreferencesKey("countdown_on")
         val REEL_COUNTER_ON = booleanPreferencesKey("reel_counter_on")
+        /** Ids of the one-per-screen first-run hints already dismissed. */
+        val HINTS_SEEN = stringSetPreferencesKey("hints_seen")
         val LAUNCHER_ICON = intPreferencesKey("launcher_icon")
         val ICON_ACCENT = intPreferencesKey("icon_accent")
 
@@ -117,6 +119,8 @@ class SettingsRepository(private val context: Context) {
     val countdownOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.COUNTDOWN_ON] ?: true }
     /** Short-video counter + its live on-screen count. On by default. */
     val reelCounterOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.REEL_COUNTER_ON] ?: true }
+    /** Hint ids the user has dismissed; each hint is shown once ever. */
+    val hintsSeen: Flow<Set<String>> = context.dataStore.data.map { it[Keys.HINTS_SEEN] ?: emptySet() }
     val launcherIcon: Flow<Int> = context.dataStore.data.map { it[Keys.LAUNCHER_ICON] ?: 0 }
     val iconAccent: Flow<Int> = context.dataStore.data.map { it[Keys.ICON_ACCENT] ?: 0 }
 
@@ -164,6 +168,11 @@ class SettingsRepository(private val context: Context) {
     }
 
     suspend fun getPinSalt(): String? = context.dataStore.data.first()[Keys.PIN_SALT]
+
+    /** Marks a first-run hint as seen. Never un-set: a hint shows once ever. */
+    suspend fun markHintSeen(id: String) = context.dataStore.edit { p ->
+        p[Keys.HINTS_SEEN] = (p[Keys.HINTS_SEEN] ?: emptySet()) + id
+    }
 
     suspend fun setBlockAllUntil(time: Long) = context.dataStore.edit { it[Keys.BLOCK_ALL_UNTIL] = time }
     suspend fun setOnboardingDone(on: Boolean) = context.dataStore.edit { it[Keys.ONBOARDING_DONE] = on }

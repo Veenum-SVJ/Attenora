@@ -62,6 +62,7 @@ import dev.opensource.focusguard.domain.WeekEngine
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
 import dev.opensource.focusguard.ui.common.FgIcon
+import dev.opensource.focusguard.ui.common.FirstRunHint
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.PageHeader
 import dev.opensource.focusguard.ui.common.appLabel
@@ -164,6 +165,13 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                             .padding(horizontal = 8.dp, vertical = 6.dp)
                     )
                 }
+            )
+        }
+
+        item {
+            FirstRunHint(
+                id = "limits",
+                text = "A limit can be a daily allowance, a fixed session, a schedule, or permanent. Focus Tools holds the unlock delay and the daily quota."
             )
         }
 

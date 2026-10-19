@@ -57,6 +57,7 @@ import dev.opensource.focusguard.domain.WeekEngine
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
 import dev.opensource.focusguard.ui.common.FgDivider
+import dev.opensource.focusguard.ui.common.FirstRunHint
 import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.PageHeader
@@ -290,6 +291,13 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
     ) {
         item { PageHeader("Usage Stats") }
+
+        item {
+            FirstRunHint(
+                id = "stats",
+                text = "Tap any app to open its own page — usage by hour, opens, and a place to set a limit."
+            )
+        }
 
         // Date stepper + period chips.
         item {

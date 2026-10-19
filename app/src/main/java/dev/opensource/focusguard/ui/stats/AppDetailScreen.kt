@@ -42,6 +42,7 @@ import dev.opensource.focusguard.enforcement.Reels
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
 import dev.opensource.focusguard.ui.common.FgDivider
+import dev.opensource.focusguard.ui.common.FirstRunHint
 import dev.opensource.focusguard.ui.common.FgGroup
 import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.LocalAppContainer
@@ -170,6 +171,11 @@ fun AppDetailScreen(
             .verticalScroll(rememberScrollState())
     ) {
         PageHeader(title = label, onBack = onBack, subtitle = pkg)
+
+        FirstRunHint(
+            id = "app_detail",
+            text = "Switch between today, 7 days and 30 days. Everything you can do about this app sits at the bottom of the page."
+        )
 
         // Today, at a glance.
         FgCard(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {

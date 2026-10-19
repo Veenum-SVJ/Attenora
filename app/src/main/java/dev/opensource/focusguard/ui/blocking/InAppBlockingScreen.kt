@@ -48,6 +48,7 @@ import dev.opensource.focusguard.enforcement.FocusGuardAccessibilityService
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgCard
 import dev.opensource.focusguard.ui.common.FgIcon
+import dev.opensource.focusguard.ui.common.FirstRunHint
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.PageHeader
 import dev.opensource.focusguard.ui.common.appLabel
@@ -121,6 +122,12 @@ fun InAppBlockingScreen() {
     LazyColumn(Modifier.fillMaxSize()) {
         item {
             PageHeader(title = "In-App Blocking")
+        }
+        item {
+            FirstRunHint(
+                id = "inapp",
+                text = "Turn off the parts of an app that pull you in — feeds, Reels, Shorts, messages — app by app, without blocking the app itself."
+            )
         }
         item {
             Text(
