@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
 import dev.opensource.focusguard.AppContainer
+import dev.opensource.focusguard.enforcement.Reels
 import java.util.concurrent.ConcurrentHashMap
 
 /** App-wide composition access to the manual DI container. */
@@ -151,9 +152,20 @@ private val iconCache = ConcurrentHashMap<String, android.graphics.Bitmap?>()
 fun appIconBitmap(context: Context, pkg: String): android.graphics.Bitmap? {
     if (iconCache.size > 256) iconCache.clear()
     return iconCache.computeIfAbsent(pkg) {
-        runCatching {
-            context.packageManager.getApplicationIcon(pkg).toBitmap()
-        }.getOrNull()
+        // The catalogue is keyed on canonical packages, but plenty of people
+        // run a Lite build or a patched client — a different package with its
+        // own icon. Without the fallback those installs show as a letter tile
+        // even though the app is right there on the phone.
+        val candidates = listOf(pkg) + Reels.alternates(pkg)
+        candidates.firstNotNullOfOrNull { candidate ->
+            runCatching {
+                val bitmap = context.packageManager.getApplicationIcon(candidate).toBitmap()
+                // Some apps hand back a drawable with no intrinsic size, which
+                // decodes to a 1x1 plate that reads as a broken logo. Anything
+                // that small is treated as "no icon" so the initial tile shows.
+                if (bitmap.width < 8 || bitmap.height < 8) null else bitmap
+            }.getOrNull()
+        }
     }
 }
 

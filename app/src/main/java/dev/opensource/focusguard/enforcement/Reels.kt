@@ -62,6 +62,16 @@ object Reels {
 
     fun canonical(pkg: String): String = aliases[pkg] ?: pkg
 
+    /**
+     * The other packages that mean the same app (Lite builds, patched clients).
+     * Used for icon fallbacks, where a variant install would otherwise show as
+     * a blank tile.
+     */
+    fun alternates(pkg: String): List<String> {
+        val c = canonical(pkg)
+        return aliases.filterValues { it == c }.keys.toList()
+    }
+
     /** Marker fragments for [pkg]; empty for anything we do not count. */
     fun markersFor(pkg: String): List<String> = markers[canonical(pkg)] ?: emptyList()
 

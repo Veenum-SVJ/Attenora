@@ -88,29 +88,34 @@ fun SettingsScreen(onBack: () -> Unit) {
     // gone, and it comes back by itself the moment something is revoked.
     val allGranted = usageGranted && serviceOn && notifGranted
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-    ) {
-        PageHeader("Settings", onBack = onBack)
-        Spacer(Modifier.height(4.dp))
-        FgGroup(Modifier.padding(horizontal = 16.dp)) {
-            NavRow("Usage Limits and Tracking", { page = "tracking" }, icon = FgIcons.Gauge)
-            if (!allGranted) {
+    // The footer sits at the bottom of the screen, not tucked under the last
+    // row: the list scrolls inside the space above it, so the brand line is
+    // always in the same place no matter how many rows are showing.
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+        ) {
+            PageHeader("Settings", onBack = onBack)
+            Spacer(Modifier.height(4.dp))
+            FgGroup(Modifier.padding(horizontal = 16.dp)) {
+                NavRow("Usage Limits and Tracking", { page = "tracking" }, icon = FgIcons.Gauge)
+                if (!allGranted) {
+                    FgDivider(inset = RowInset)
+                    NavRow("Permissions", { page = "permissions" }, icon = FgIcons.Lock)
+                }
                 FgDivider(inset = RowInset)
-                NavRow("Permissions", { page = "permissions" }, icon = FgIcons.Lock)
+                NavRow("Theme", { page = "theme" }, icon = FgIcons.Palette)
+                FgDivider(inset = RowInset)
+                NavRow("Focus Tools", { page = "tools" }, icon = FgIcons.Stopwatch)
+                FgDivider(inset = RowInset)
+                NavRow("Website Blocking", { page = "web" }, icon = FgIcons.Globe)
+                FgDivider(inset = RowInset)
+                NavRow("Daily Reminder", { page = "reminder" }, icon = FgIcons.Bell)
+                FgDivider(inset = RowInset)
+                NavRow("Data", { page = "data" }, icon = FgIcons.Doc)
             }
-            FgDivider(inset = RowInset)
-            NavRow("Theme", { page = "theme" }, icon = FgIcons.Palette)
-            FgDivider(inset = RowInset)
-            NavRow("Focus Tools", { page = "tools" }, icon = FgIcons.Stopwatch)
-            FgDivider(inset = RowInset)
-            NavRow("Website Blocking", { page = "web" }, icon = FgIcons.Globe)
-            FgDivider(inset = RowInset)
-            NavRow("Daily Reminder", { page = "reminder" }, icon = FgIcons.Bell)
-            FgDivider(inset = RowInset)
-            NavRow("Data", { page = "data" }, icon = FgIcons.Doc)
         }
         AboutFooter()
     }
