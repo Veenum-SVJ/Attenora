@@ -163,7 +163,6 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     val challengeType by container.settings.challengeType.collectAsState(initial = "quote")
     val challengeText by container.settings.challengeText.collectAsState(initial = "")
     val pinHash by container.settings.pinHash.collectAsState(initial = "")
-    val biometricOn by container.settings.biometricEnabled.collectAsState(initial = true)
     val hasPin = pinHash != null && pinHash != ""
 
     var showHourPicker by remember { mutableStateOf(false) }
@@ -284,9 +283,9 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text("App lock PIN", style = MaterialTheme.typography.bodyLarge)
+                        Text("Limit PIN", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            "Protects limits and settings.",
+                            "Asked only when a limit is added, changed or removed.",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -295,13 +294,6 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                 }
             } else {
                 NavRow("Change PIN", { showPinDialog = true }, value = "Set")
-                FgDivider(inset = 20.dp)
-                ToggleRow(
-                    title = "Biometric / screen-lock unlock",
-                    subtitle = "Faster entry with fingerprint or device credentials",
-                    checked = biometricOn,
-                    onCheckedChange = { on -> scope.launch { container.settings.setBiometric(on) } }
-                )
                 FgDivider(inset = 20.dp)
                 NavRow(
                     title = "Remove PIN",

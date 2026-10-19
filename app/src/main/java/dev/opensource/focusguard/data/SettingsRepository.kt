@@ -45,7 +45,6 @@ class SettingsRepository(private val context: Context) {
     private object Keys {
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val PIN_SALT = stringPreferencesKey("pin_salt")
-        val BIOMETRIC = booleanPreferencesKey("biometric_enabled")
         val BLOCK_ALL_UNTIL = longPreferencesKey("block_all_until")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val ONBOARDING_STEP = intPreferencesKey("onboarding_step")
@@ -98,7 +97,6 @@ class SettingsRepository(private val context: Context) {
     // ---- Existing (v1) ----
     /** null = no PIN set; "" is used as a "still loading" sentinel by callers. */
     val pinHash: Flow<String?> = context.dataStore.data.map { it[Keys.PIN_HASH] }
-    val biometricEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.BIOMETRIC] ?: true }
     val blockAllUntil: Flow<Long> = context.dataStore.data.map { it[Keys.BLOCK_ALL_UNTIL] ?: 0L }
     val onboardingDone: Flow<Boolean> = context.dataStore.data.map { it[Keys.ONBOARDING_DONE] ?: false }
     /** Last onboarding step the user reached, so setup survives process death. */
@@ -167,7 +165,6 @@ class SettingsRepository(private val context: Context) {
 
     suspend fun getPinSalt(): String? = context.dataStore.data.first()[Keys.PIN_SALT]
 
-    suspend fun setBiometric(on: Boolean) = context.dataStore.edit { it[Keys.BIOMETRIC] = on }
     suspend fun setBlockAllUntil(time: Long) = context.dataStore.edit { it[Keys.BLOCK_ALL_UNTIL] = time }
     suspend fun setOnboardingDone(on: Boolean) = context.dataStore.edit { it[Keys.ONBOARDING_DONE] = on }
     suspend fun setOnboardingStep(step: Int) =

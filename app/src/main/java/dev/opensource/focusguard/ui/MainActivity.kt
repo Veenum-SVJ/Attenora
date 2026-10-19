@@ -1,6 +1,7 @@
 package dev.opensource.focusguard.ui
 
 import android.os.Bundle
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -10,20 +11,21 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
-import androidx.fragment.app.FragmentActivity
 import dev.opensource.focusguard.FocusApp
 import dev.opensource.focusguard.data.ThemeMode
 import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.theme.FgColors
-import dev.opensource.focusguard.ui.lock.LockGate
 import dev.opensource.focusguard.ui.theme.FocusGuardTheme
 
-class MainActivity : FragmentActivity() {
+/**
+ * The app itself. There is no lock screen: FocusGuard opens straight into
+ * your stats. The PIN still exists, but only as one of the ways to get past
+ * a *limit* change (Settings -> Usage Limits and Tracking -> Limit protection).
+ */
+class MainActivity : ComponentActivity() {
 
-    private val unlocked = mutableStateOf(false)
     private var firstFrameLogged = false
     private val startT0 = android.os.SystemClock.elapsedRealtime()
 
@@ -64,23 +66,17 @@ class MainActivity : FragmentActivity() {
                 ) {
                     FocusGuardTheme(darkTheme = darkTheme, accentIndex = accentIdx) {
                         // Paint the themed background edge-to-edge so onboarding
-                        // and the lock screen (which sit outside the app Scaffold)
-                        // don't fall through to the dark system window background.
+                        // (which sits outside the app Scaffold) doesn't fall
+                        // through to the system window background.
                         Surface(
                             modifier = Modifier.fillMaxSize(),
                             color = MaterialTheme.colorScheme.background
                         ) {
-                            LockGate(unlocked = unlocked, onUnlock = { unlocked.value = true })
+                            FocusGuardApp()
                         }
                     }
                 }
             }
         }
-    }
-
-    override fun onStop() {
-        super.onStop()
-        // Re-lock as soon as the app leaves the foreground.
-        unlocked.value = false
     }
 }
