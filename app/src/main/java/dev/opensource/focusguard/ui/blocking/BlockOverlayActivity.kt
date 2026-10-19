@@ -22,10 +22,11 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,14 +36,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.FocusApp
 import dev.opensource.focusguard.data.FocusSchedule
-import dev.opensource.focusguard.data.UnlockChallenge
+import dev.opensource.focusguard.domain.ResetEngine
+import dev.opensource.focusguard.domain.UnlockEngine
 import dev.opensource.focusguard.enforcement.Notifier
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgIcon
 import dev.opensource.focusguard.ui.common.appLabel
 import dev.opensource.focusguard.ui.icons.FgIcons
 import dev.opensource.focusguard.ui.theme.FocusGuardTheme
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -168,35 +171,43 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
         }
     }
 
-    // What it takes to end an active focus session early (Curbox-style):
-    // only offered when an unlock challenge is configured — otherwise the
-    // overlay stays a hard stop, same as before.
-    val unlockType by produceState<String?>(initialValue = null) {
-        value = container.settings.unlockChallenge.first()
-    }
-    val intentLast by produceState(initialValue = "") {
-        value = container.settings.intentLast.first()
-    }
-    var showEndChallenge by remember { mutableStateOf(false) }
-    val canEndEarly = reason == BlockOverlayActivity.REASON_BLOCK_ALL &&
-        unlockType != null &&
-        unlockType != UnlockChallenge.OFF &&
-        unlockType != UnlockChallenge.NONE
+    // Ending a focus session early asks for no code. The gate is patience
+    // plus a daily allowance, both set in Settings → Focus Tools →
+    // "Unlock delay & quota": the button stays disabled for the delay, and
+    // each early end spends one of the day's unlocks.
+    val scope = rememberCoroutineScope()
+    val resetHour by container.settings.resetHour.collectAsState(initial = 0)
+    val delaySec by container.settings.unlockDelaySec.collectAsState(initial = 0)
+    val quota by container.settings.unlockQuota.collectAsState(initial = 3)
+    val usedDay by container.settings.unlockUsedDay.collectAsState(initial = "")
+    val usedCount by container.settings.unlockUsedCount.collectAsState(initial = 0)
 
-    if (showEndChallenge && unlockType != null) {
-        UnlockChallengeDialog(
-            type = unlockType!!,
-            lastIntent = intentLast,
-            onPass = { intent ->
-                if (intent.isNotBlank()) {
-                    container.settings.setIntent(intent, System.currentTimeMillis())
-                }
-                container.settings.setBlockAllUntil(0L)
-                Notifier.cancelFocusSession(context)
-                showEndChallenge = false
-            },
-            onCancel = { showEndChallenge = false }
+    val now = System.currentTimeMillis()
+    val usedToday = if (usedDay == ResetEngine.dayKey(now, resetHour)) usedCount else 0
+    val remaining = if (quota <= 0) Int.MAX_VALUE else (quota - usedToday).coerceAtLeast(0)
+    val canEndEarly = reason == BlockOverlayActivity.REASON_BLOCK_ALL && remaining > 0
+
+    // Battery-safe: one suspended delay, no ticking countdown.
+    var delayDone by remember(delaySec) { mutableStateOf(delaySec <= 0) }
+    LaunchedEffect(delaySec, canEndEarly) {
+        if (canEndEarly && delaySec > 0) {
+            delay(delaySec * 1000L)
+            delayDone = true
+        }
+    }
+
+    fun endSessionEarly() {
+        val (dayKey, count) = UnlockEngine.recordUnlock(
+            System.currentTimeMillis(), usedDay, usedCount, quota, resetHour
         )
+        // container.scope outlives this Activity, so the write cannot be lost
+        // to the finish() below.
+        container.scope.launch {
+            container.settings.recordUnlock(dayKey, count)
+            container.settings.setBlockAllUntil(0L)
+        }
+        Notifier.cancelFocusSession(context)
+        (context as? android.app.Activity)?.finish()
     }
 
     Column(
@@ -273,9 +284,19 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
         if (canEndEarly) {
             Spacer(Modifier.height(12.dp))
             OutlinedButton(
-                onClick = { showEndChallenge = true },
+                onClick = { endSessionEarly() },
+                enabled = delayDone,
                 modifier = Modifier.fillMaxWidth()
-            ) { Text("End focus session early…") }
+            ) { Text(if (delayDone) "End focus session early" else "One moment\u2026") }
+            if (quota > 0) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    "Ends the session and uses one of your $remaining unlocks today.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }

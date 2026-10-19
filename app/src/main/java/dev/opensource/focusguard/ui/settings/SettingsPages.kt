@@ -615,9 +615,9 @@ fun FocusToolsScreen(onBack: () -> Unit) {
     SettingsPage("Focus Tools", onBack) {
         FgGroup(Modifier.padding(horizontal = 16.dp)) {
             NavRow(
-                title = "Unlock challenge & quota",
-                subtitle = "Delay, math/typing/intent challenges and a daily unlock cap " +
-                    "at the moment of weakness",
+                title = "Unlock delay & quota",
+                subtitle = "A pause before a focus session can end early, and a daily " +
+                    "allowance on how often. No codes.",
                 icon = FgIcons.Hourglass,
                 onClick = { page = "unlock" }
             )

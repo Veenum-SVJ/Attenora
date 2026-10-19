@@ -28,7 +28,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import dev.opensource.focusguard.data.UnlockChallenge
 import dev.opensource.focusguard.domain.ResetEngine
 import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.PageHeader
@@ -37,8 +36,9 @@ import dev.opensource.focusguard.ui.theme.FgColors
 import kotlinx.coroutines.launch
 
 /**
- * Settings → Unlock Challenge (Curbox port): what the block prompt demands
- * before granting more time — delay, challenge type, and a daily quota.
+ * Settings → Focus Tools → "Unlock delay & quota". Ending a focus session
+ * early never asks for a code: it costs one of the day's unlocks, and the
+ * button only becomes tappable once the delay has run out.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -46,13 +46,11 @@ fun UnlockSettingsScreen(onBack: () -> Unit) {
     val container = LocalAppContainer.current
     val scope = rememberCoroutineScope()
 
-    val challenge by container.settings.unlockChallenge.collectAsState(initial = UnlockChallenge.OFF)
     val delaySec by container.settings.unlockDelaySec.collectAsState(initial = 0)
     val quota by container.settings.unlockQuota.collectAsState(initial = 3)
     val usedDay by container.settings.unlockUsedDay.collectAsState(initial = "")
     val usedCount by container.settings.unlockUsedCount.collectAsState(initial = 0)
     val resetHour by container.settings.resetHour.collectAsState(initial = 0)
-    val intentLast by container.settings.intentLast.collectAsState(initial = "")
 
     val today = remember(resetHour) { ResetEngine.dayKey(System.currentTimeMillis(), resetHour) }
     val usedToday = if (usedDay == today) usedCount else 0
@@ -64,56 +62,17 @@ fun UnlockSettingsScreen(onBack: () -> Unit) {
             .padding(bottom = 32.dp)
     ) {
         PageHeader(
-            "Unlock Challenge",
+            "Unlock delay & quota",
             onBack = onBack,
-            subtitle = "What it takes to get more time on a blocked app"
+            subtitle = "A pause and a daily allowance before a focus session ends early"
         )
 
         Spacer(Modifier.height(8.dp))
 
-        SectionCard("The challenge") {
-            Text(
-                "Shown when the prompt offers extra time. \"Stay blocked\" never offers any.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(12.dp))
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Chip("Off", challenge == UnlockChallenge.OFF) {
-                    scope.launch { container.settings.setUnlockChallenge(UnlockChallenge.OFF) }
-                }
-                Chip("Stay blocked", challenge == UnlockChallenge.NONE) {
-                    scope.launch { container.settings.setUnlockChallenge(UnlockChallenge.NONE) }
-                }
-                Chip("Math", challenge == UnlockChallenge.MATH) {
-                    scope.launch { container.settings.setUnlockChallenge(UnlockChallenge.MATH) }
-                }
-                Chip("Type the sentence", challenge == UnlockChallenge.QUOTE) {
-                    scope.launch { container.settings.setUnlockChallenge(UnlockChallenge.QUOTE) }
-                }
-                Chip("State your intent", challenge == UnlockChallenge.INTENT) {
-                    scope.launch { container.settings.setUnlockChallenge(UnlockChallenge.INTENT) }
-                }
-            }
-            if (challenge == UnlockChallenge.INTENT && intentLast.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Your last intent: \u201C$intentLast\u201D",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-
         SectionCard("Delay before choosing") {
             Text(
-                "The session buttons stay disabled for a moment after the prompt appears — " +
-                    "a small gap between the urge and the scroll.",
+                "\"End focus session early\" stays greyed out for a moment after the " +
+                    "block appears — a small gap between the urge and the scroll.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -135,8 +94,9 @@ fun UnlockSettingsScreen(onBack: () -> Unit) {
 
         SectionCard("Daily unlock quota") {
             Text(
-                "How many times per usage day you may unlock. Once they're gone, " +
-                    "the app stays blocked until your usage day resets.",
+                "How many times per usage day you may end a session early. Once they're " +
+                    "gone, the session runs to its end and the block returns " +
+                    "to being a hard stop until your usage day resets.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
