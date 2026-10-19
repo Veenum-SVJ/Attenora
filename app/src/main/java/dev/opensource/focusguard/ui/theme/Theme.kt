@@ -216,12 +216,32 @@ private val FgShapes = Shapes(
 @Composable
 fun FocusGuardTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
+    accentIndex: Int = 0,
     content: @Composable () -> Unit
 ) {
     val semantic = if (darkTheme) DarkSemantic else LightSemantic
+
+    // The accent picked in Settings > Theme is the app's ONE brand colour, so it
+    // has to reach MaterialTheme.primary. It previously stopped at
+    // LocalAccentColor, which only the nav bar and onboarding read — so choosing
+    // Mint turned the bottom bar green while every chip, button and value stayed
+    // lavender. Dark surfaces take the bright variant, light surfaces the deep
+    // one, which is the same pairing the launcher-icon previews use.
+    val accent = if (darkTheme) {
+        FgColors.accentColor(accentIndex)
+    } else {
+        FgColors.accentDeep(accentIndex)
+    }
+    val scheme = (if (darkTheme) DarkColors else LightColors).copy(
+        primary = accent,
+        secondary = accent,
+        onPrimary = if (darkTheme) Color(0xFF1A1420) else Color.White,
+        onPrimaryContainer = accent
+    )
+
     CompositionLocalProvider(LocalFgSemantic provides semantic) {
         MaterialTheme(
-            colorScheme = if (darkTheme) DarkColors else LightColors,
+            colorScheme = scheme,
             typography = FgTypography,
             shapes = FgShapes,
             content = content

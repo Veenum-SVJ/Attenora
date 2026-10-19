@@ -62,7 +62,7 @@ class MainActivity : FragmentActivity() {
                 CompositionLocalProvider(
                     LocalAccentColor provides FgColors.accentColor(accentIdx)
                 ) {
-                    FocusGuardTheme(darkTheme = darkTheme) {
+                    FocusGuardTheme(darkTheme = darkTheme, accentIndex = accentIdx) {
                         // Paint the themed background edge-to-edge so onboarding
                         // and the lock screen (which sit outside the app Scaffold)
                         // don't fall through to the dark system window background.
