@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,8 +20,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -36,13 +39,16 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.FocusApp
 import dev.opensource.focusguard.data.FocusSchedule
+import dev.opensource.focusguard.data.ThemeMode
 import dev.opensource.focusguard.domain.ResetEngine
 import dev.opensource.focusguard.domain.UnlockEngine
 import dev.opensource.focusguard.enforcement.Notifier
 import dev.opensource.focusguard.ui.common.AppIcon
 import dev.opensource.focusguard.ui.common.FgIcon
+import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.appLabel
 import dev.opensource.focusguard.ui.icons.FgIcons
+import dev.opensource.focusguard.ui.theme.FgColors
 import dev.opensource.focusguard.ui.theme.FocusGuardTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -110,10 +116,33 @@ class BlockOverlayActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         params = paramsOf(intent)
+        val container = (application as FocusApp).container
         setContent {
-            FocusGuardTheme {
-                val p = params
-                BlockContent(pkg = p.pkg, reason = p.reason, domain = p.domain, untilMs = p.untilMs)
+            // Same theme plumbing as MainActivity: without it the overlay
+            // ignored both the light/dark choice and the accent, and every
+            // Text fell back to LocalContentColor's default black.
+            val themeMode by container.settings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
+            val darkTheme = when (themeMode) {
+                ThemeMode.DARK -> true
+                ThemeMode.LIGHT -> false
+                else -> isSystemInDarkTheme()
+            }
+            val accentIdx by container.settings.iconAccent.collectAsState(initial = 0)
+            CompositionLocalProvider(LocalAccentColor provides FgColors.accentColor(accentIdx)) {
+                FocusGuardTheme(darkTheme = darkTheme, accentIndex = accentIdx) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        val p = params
+                        BlockContent(
+                            pkg = p.pkg,
+                            reason = p.reason,
+                            domain = p.domain,
+                            untilMs = p.untilMs
+                        )
+                    }
+                }
             }
         }
     }
@@ -241,6 +270,7 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
         Text(
             title,
             style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface,
             textAlign = TextAlign.Center
         )
         Spacer(Modifier.height(12.dp))
