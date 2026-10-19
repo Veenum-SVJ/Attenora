@@ -65,15 +65,21 @@ import java.util.Locale
 private data class Target(val kind: String, val id: String)
 
 @Composable
-fun AddLimitScreen(onBack: () -> Unit) {
+fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val gate = rememberChallengeGate()
 
-    val targets = remember { mutableStateListOf<Target>() }
+    // Arriving from an app's own page means the target is already decided and
+    // the only sensible question left is how long — so open on a daily limit.
+    val targets = remember {
+        mutableStateListOf<Target>().apply {
+            if (initialPkg != null) add(Target(TargetKind.APP, initialPkg))
+        }
+    }
     var pickerOpen by remember { mutableStateOf(false) }
-    var type by remember { mutableStateOf<String?>(null) }
+    var type by remember { mutableStateOf<String?>(if (initialPkg != null) LimitType.DAILY else null) }
 
     var dailyMinutes by remember { mutableStateOf("30") }
     var startMinute by remember { mutableStateOf(9 * 60) }

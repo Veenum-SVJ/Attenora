@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
 /** Pushed (full-screen) destinations reachable from the drawer or lists. */
 sealed interface Pushed {
     data object Settings : Pushed
-    data object AddLimit : Pushed
+    data class AddLimit(val pkg: String? = null) : Pushed
     data object BlockKeywords : Pushed
     data class AppDetail(val pkg: String) : Pushed
 }
@@ -202,7 +202,7 @@ fun FocusGuardApp() {
                     )
                     tab == 1 -> UsageLimitsScreen(
                         query = searchQuery,
-                        onAddLimit = { push(Pushed.AddLimit) },
+                        onAddLimit = { push(Pushed.AddLimit()) },
                         onBlockKeywords = { push(Pushed.BlockKeywords) }
                     )
                     else -> InAppBlockingScreen()
@@ -355,12 +355,12 @@ private fun PushedContent(
 ) {
     when (dest) {
         Pushed.Settings -> SettingsScreen(onBack = onPop)
-        Pushed.AddLimit -> AddLimitScreen(onBack = onPop)
+        is Pushed.AddLimit -> AddLimitScreen(onBack = onPop, initialPkg = dest.pkg)
         Pushed.BlockKeywords -> BlockKeywordsScreen(onBack = onPop)
         is Pushed.AppDetail -> dev.opensource.focusguard.ui.stats.AppDetailScreen(
             pkg = dest.pkg,
             onBack = onPop,
-            onSetLimit = { onPush(Pushed.AddLimit) },
+            onSetLimit = { onPush(Pushed.AddLimit(dest.pkg)) },
             onBlockInApp = onOpenInAppBlocking
         )
     }
