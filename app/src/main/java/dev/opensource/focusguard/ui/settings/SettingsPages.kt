@@ -5,11 +5,7 @@ import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,10 +19,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -52,16 +46,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.data.BlockedSite
 import dev.opensource.focusguard.data.ChallengeMode
@@ -81,9 +69,7 @@ import dev.opensource.focusguard.ui.common.hasNotificationPermission
 import dev.opensource.focusguard.ui.common.requestNotificationPermission
 import dev.opensource.focusguard.ui.icons.FgIcons
 import dev.opensource.focusguard.ui.notifications.UsageNotificationsScreen
-import dev.opensource.focusguard.ui.theme.FgColors
 import dev.opensource.focusguard.ui.theme.fg
-import dev.opensource.focusguard.util.LauncherIcons
 import dev.opensource.focusguard.util.exportCsv
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -446,21 +432,23 @@ fun PermissionsScreen(onBack: () -> Unit) {
 // Theme
 // ─────────────────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ThemeSettingsScreen(onBack: () -> Unit) {
     val container = LocalAppContainer.current
     val scope = rememberCoroutineScope()
-    val context = LocalContext.current
 
     val themeMode by container.settings.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-    val launcherIndex by container.settings.launcherIcon.collectAsState(initial = 0)
-    val accentIndex by container.settings.iconAccent.collectAsState(initial = 0)
 
     SettingsPage("Theme", onBack) {
         SectionLabel("Appearance")
         FgGroup(Modifier.padding(horizontal = 16.dp)) {
             Column(Modifier.padding(20.dp)) {
+                Text(
+                    "FocusGuard follows your phone unless you tell it otherwise.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(14.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     listOf(
                         ThemeMode.SYSTEM to "System",
@@ -474,126 +462,6 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
                 }
             }
         }
-
-        SectionLabel("Accent")
-        FgGroup(Modifier.padding(horizontal = 16.dp)) {
-            Column(Modifier.padding(20.dp)) {
-                Text(
-                    "Re-tints buttons, charts and the selected tab. Blocked and allowed " +
-                        "states keep their own colours so they always mean the same thing.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(14.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    FgColors.AccentChoices.forEachIndexed { i, (main, _) ->
-                        val selected = i == accentIndex
-                        Box(
-                            Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(main)
-                                .then(
-                                    if (selected) Modifier.border(
-                                        3.dp, MaterialTheme.colorScheme.onSurface, CircleShape
-                                    ) else Modifier
-                                )
-                                .clickable { scope.launch { container.settings.setIconAccent(i) } }
-                        )
-                    }
-                }
-            }
-        }
-
-        SectionLabel("Home screen icon")
-        FgGroup(Modifier.padding(horizontal = 16.dp)) {
-            Column(Modifier.padding(20.dp)) {
-                Text(
-                    "Pick a shield colour. The change appears on your home screen in a moment.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(12.dp))
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    FgColors.AccentChoices.forEachIndexed { i, (main, deep) ->
-                        val selected = i == launcherIndex
-                        val border by animateColorAsState(
-                            if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
-                            tween(200), label = "launcher-border-$i"
-                        )
-                        // Label lives inside the same column as its swatch, so
-                        // the names can never wrap out of line with the tiles.
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Box(
-                                Modifier
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .border(2.dp, border, RoundedCornerShape(18.dp))
-                                    .background(
-                                        Brush.linearGradient(listOf(main, deep)),
-                                        RoundedCornerShape(18.dp)
-                                    )
-                                    .clickable {
-                                        scope.launch {
-                                            container.settings.setLauncherIcon(i)
-                                            LauncherIcons.apply(context, i)
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                ShieldCheck(width = 44.dp, fill = Color(0xFF17131F), mark = main)
-                            }
-                            Spacer(Modifier.height(6.dp))
-                            Text(
-                                FgColors.AccentNames[i],
-                                modifier = Modifier.width(72.dp),
-                                style = MaterialTheme.typography.labelSmall,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                                color = if (selected) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
- * Simplified shield + check for the launcher-colour previews. The check is
- * drawn in [mark] rather than the shield's own colour — otherwise it is
- * invisible, which is exactly what happened while it was one colour.
- */
-@Composable
-private fun ShieldCheck(width: Dp, fill: Color, mark: Color) {
-    Canvas(Modifier.size(width)) {
-        val w = size.width
-        val h = size.height
-        val cx = w / 2f
-        val shieldPath = Path().apply {
-            moveTo(cx, 0f)
-            lineTo(w * 0.92f, w * 0.20f)
-            lineTo(w * 0.92f, h * 0.65f)
-            quadraticTo(w * 0.88f, h * 0.78f, cx, h * 0.92f)
-            quadraticTo(w * 0.12f, h * 0.78f, w * 0.08f, h * 0.65f)
-            lineTo(w * 0.08f, w * 0.20f)
-            close()
-        }
-        drawPath(shieldPath, color = fill)
-        val stroke = 4f
-        drawLine(
-            mark, Offset(w * 0.30f, h * 0.50f), Offset(w * 0.44f, h * 0.65f),
-            strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round
-        )
-        drawLine(
-            mark, Offset(w * 0.44f, h * 0.65f), Offset(w * 0.71f, h * 0.38f),
-            strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round
-        )
     }
 }
 
