@@ -12,10 +12,13 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
+import android.widget.LinearLayout
 import android.widget.TextView
 import dev.opensource.focusguard.FocusApp
 import dev.opensource.focusguard.domain.Allowlist
 import dev.opensource.focusguard.domain.UrlMatcher
+import dev.opensource.focusguard.ui.blocking.BlockOverlayActivity
 import dev.opensource.focusguard.ui.common.formatDuration
 import dev.opensource.focusguard.util.Grayscale
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +27,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
+import java.util.Date
 
 /**
  * The single accessibility service. Replaces the former three services so the
@@ -150,6 +154,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             runCatching { container.enforcement.evaluate(pkg) }
         }
         if (watchPkg == null) startLimitWatch(pkg)
+        ensureBlockCovered(pkg)
     }
 
     /**
@@ -224,6 +229,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             applyGrayscale(it)
             startLimitWatch(it)
             onReelForeground(it)
+            ensureBlockCovered(it)
         }
     }
 
@@ -243,6 +249,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 onReelForeground(pkg)
                 if (pkg in BROWSERS) checkWebsite(e, pkg)
                 startLimitWatch(pkg)
+                if (coverPkg != null && coverPkg != pkg) hideBlockCover()
+                ensureBlockCovered(pkg)
             }
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
                 if (enabledRules.value[pkg] != null || enabledRules.value[canonical(pkg)] != null) {
@@ -257,7 +265,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 if (pkg in BROWSERS) checkWebsite(e, pkg)
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
-                if (isVerticalScroll(e)) noteReelScroll(pkg)
+                if (isVerticalScroll(e)) noteReelScroll(e)
             }
         }
     }
@@ -319,7 +327,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
     private fun findAddressText(): String? {
         val root = rootInActiveWindow ?: return null
-        val candidates = ArrayList<String>(4)
+        val candidates = ArrayList<String>(6)
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         var visited = 0
@@ -328,7 +336,16 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 val node = queue.poll()
                 visited++
                 val cls = node.className?.toString() ?: ""
-                if (cls.endsWith("EditText")) {
+                val id = node.viewIdResourceName ?: ""
+                // Chrome, Brave, Edge, Firefox and Samsung Internet all show
+                // the URL in a plain text bar (id "url_bar", "omnibox", …),
+                // not in an EditText — which is why the old EditText-only scan
+                // never found a host in Brave and website blocking did nothing.
+                val looksLikeBar = cls.endsWith("EditText") ||
+                    id.contains("url", ignoreCase = true) ||
+                    id.contains("omnibox", ignoreCase = true) ||
+                    id.contains("address", ignoreCase = true)
+                if (looksLikeBar) {
                     node.text?.toString()?.takeIf { it.isNotBlank() }?.let { candidates.add(it) }
                     node.hintText?.toString()?.takeIf { it.isNotBlank() }?.let { candidates.add(it) }
                     node.contentDescription?.toString()?.takeIf { it.isNotBlank() }?.let { candidates.add(it) }
@@ -436,6 +453,142 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         pillPkg = null
     }
 
+    // --- fallback block cover -----------------------------------------------
+
+    /**
+     * The block screen is a normal Activity. Android normally allows an enabled
+     * accessibility service to start one, but several OEM builds suppress it
+     * (the "display pop-ups while running in background" switch), and the
+     * launch then fails silently: the limit fires, the pill disappears, and
+     * the app stays usable. If the Activity has not come to the front shortly
+     * after a block decision, cover the app with an accessibility overlay
+     * instead — that window type needs no permission and cannot be suppressed,
+     * exactly like the countdown pill.
+     */
+    private var coverPkg: String? = null
+    private var blockCoverView: View? = null
+    private var coverCountdown: TextView? = null
+    private var coverUntil = 0L
+
+    private val coverTick = object : Runnable {
+        override fun run() {
+            if (blockCoverView == null) return
+            if (BlockOverlayActivity.visible) {
+                hideBlockCover()
+                return
+            }
+            if (coverUntil > 0L && System.currentTimeMillis() >= coverUntil) {
+                hideBlockCover()
+                return
+            }
+            coverCountdown?.text = if (coverUntil > 0L) clockText(coverUntil) else ""
+            mainHandler.postDelayed(this, 1_000L)
+        }
+    }
+
+    private fun ensureBlockCovered(pkg: String) {
+        mainHandler.postDelayed({
+            if (BlockOverlayActivity.visible || blockCoverView != null) return@postDelayed
+            val fg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+            if (fg != pkg) return@postDelayed
+            container.scope.launch {
+                val decision = runCatching { container.enforcement.decisionFor(pkg) }.getOrNull()
+                    ?: return@launch
+                if (decision.blocked) mainHandler.post { showBlockCover(pkg, decision) }
+            }
+        }, BLOCK_FALLBACK_MS)
+    }
+
+    private fun showBlockCover(pkg: String, decision: EnforcementManager.Decision) {
+        if (BlockOverlayActivity.visible) return
+        hideBlockCover()
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val app = runCatching {
+            packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString()
+        }.getOrDefault(pkg)
+
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.BLACK)
+            setPadding(dp(32), dp(32), dp(32), dp(32))
+        }
+        root.addView(TextView(this).apply {
+            text = when (decision.reason) {
+                BlockOverlayActivity.REASON_COOLDOWN -> "$app session over"
+                BlockOverlayActivity.REASON_SCHEDULE -> "Focus time"
+                BlockOverlayActivity.REASON_BLOCK_ALL -> "Focus session"
+                BlockOverlayActivity.REASON_WEBSITE -> "Site blocked"
+                else -> "$app is blocked"
+            }
+            setTextColor(Color.WHITE)
+            textSize = 26f
+            gravity = Gravity.CENTER
+        })
+        root.addView(TextView(this).apply {
+            text = when (decision.reason) {
+                BlockOverlayActivity.REASON_COOLDOWN ->
+                    "You used this session. Take a break — it opens again on its own."
+                BlockOverlayActivity.REASON_SCHEDULE -> "A focus schedule is active right now."
+                BlockOverlayActivity.REASON_BLOCK_ALL -> "You started a blocking session. Use the time for something better."
+                BlockOverlayActivity.REASON_WEBSITE -> "This site is on your blocklist."
+                else -> "You've reached your limit for today."
+            }
+            setTextColor(Color.argb(170, 255, 255, 255))
+            textSize = 16f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(14), 0, dp(18))
+        })
+        val countdown = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 18f
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, dp(18))
+        }
+        root.addView(countdown)
+        root.addView(Button(this).apply {
+            text = "Go home"
+            setOnClickListener {
+                runCatching { performGlobalAction(GLOBAL_ACTION_HOME) }
+                hideBlockCover()
+            }
+        })
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
+            PixelFormat.TRANSLUCENT
+        )
+        val added = runCatching {
+            getSystemService(WindowManager::class.java).addView(root, params)
+        }.isSuccess
+        if (!added) return
+        coverPkg = pkg
+        blockCoverView = root
+        coverCountdown = countdown
+        coverUntil = decision.availableAtMs
+        mainHandler.removeCallbacks(coverTick)
+        mainHandler.post(coverTick)
+    }
+
+    private fun hideBlockCover() {
+        mainHandler.removeCallbacks(coverTick)
+        val view = blockCoverView ?: return
+        blockCoverView = null
+        coverCountdown = null
+        coverPkg = null
+        coverUntil = 0L
+        runCatching { getSystemService(WindowManager::class.java).removeView(view) }
+    }
+
+    private fun clockText(ms: Long): String =
+        runCatching { android.text.format.DateFormat.getTimeFormat(this).format(Date(ms)) }
+            .getOrDefault("")
+
     private fun runDetection(pkg: String) {
         val keys = rulesFor(pkg)
         val specs = if (keys.isEmpty()) emptyList()
@@ -454,15 +607,21 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             val queue = ArrayDeque<AccessibilityNodeInfo>()
             queue.add(root)
             var visited = 0
-            while (queue.isNotEmpty() && visited < MAX_NODES_DETECT && matched.size < specs.size) {
+            while (queue.isNotEmpty() && visited < MAX_NODES_DETECT) {
                 val node = queue.poll() ?: continue
                 visited++
                 for (spec in specs) {
-                    if (spec in matched) continue
                     if (matches(node, spec)) {
                         val rect = Rect()
                         node.getBoundsInScreen(rect)
-                        matched[spec] = rect
+                        // Keep the biggest node per spec: a tab label and the
+                        // surface it opens can match the same rule, and the
+                        // tab is the one we must never act on.
+                        val prev = matched[spec]
+                        val area = rect.width().toLong() * rect.height()
+                        if (prev == null || area > prev.width().toLong() * prev.height()) {
+                            matched[spec] = rect
+                        }
                         break
                     }
                 }
@@ -496,14 +655,25 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             }
         }
 
-        val (primary, bounds) = matched.entries.first()
+        // Act on the LARGEST match, and only when it is big enough to be the
+        // surface itself. Without this, Instagram's persistent "Reels" nav
+        // label matched the rule on the home screen, so every content change
+        // pressed Back — which reloaded the feed and sometimes left the app.
+        val (primary, bounds) = matched.entries.maxByOrNull {
+            it.value.width().toLong() * it.value.height()
+        }?.let { it.key to it.value } ?: return
         val area = bounds.width().toLong() * bounds.height()
-        val fullscreen = area >= (screenArea * FULLSCREEN_RATIO)
+        val coverage = area.toDouble() / screenArea
+        val fullscreen = coverage >= FULLSCREEN_RATIO
 
         when (primary.action) {
-            DetectAction.BACK -> maybeBack()
-            DetectAction.COVER -> showCover(bounds)
-            DetectAction.AUTO -> if (fullscreen) maybeBack() else showCover(bounds)
+            DetectAction.BACK -> if (coverage >= BACK_MIN_COVERAGE) maybeBack() else hideCover()
+            DetectAction.COVER -> if (coverage >= COVER_MIN_COVERAGE) showCover(bounds) else hideCover()
+            DetectAction.AUTO -> when {
+                fullscreen -> maybeBack()
+                coverage >= COVER_MIN_COVERAGE -> showCover(bounds)
+                else -> hideCover()
+            }
         }
     }
 
@@ -668,7 +838,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      * scroll event is one video — but a fling can emit a burst, hence the floor
      * between counts.
      */
-    private fun noteReelScroll(pkg: String) {
+    private fun noteReelScroll(e: AccessibilityEvent) {
+        val pkg = e.packageName?.toString() ?: return
         if (reelPkg != pkg) return
         if (!container.reelCounterOn.value) return
         if (!reelMarked) {
@@ -680,7 +851,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 lastReelScanAt = scanNow
                 scanReelSurface(pkg)
             }
-            if (!reelMarked) return
+            if (!reelMarked) {
+                // TikTok has no stable feed id and often omits its player from
+                // the accessibility tree, so a scroll whose source fills the
+                // window is the only reliable signal there. Restricted to apps
+                // whose whole UI is the feed, so an ordinary list cannot count.
+                if (!(Reels.isFeedFirst(pkg) && sourceFillsWindow(e))) return
+                reelMarked = true
+                reelMarkedAt = System.currentTimeMillis()
+            }
         }
         val now = System.currentTimeMillis()
         if (now - lastReelCountAt < REEL_MIN_GAP_MS) return
@@ -701,6 +880,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      * Feeds page vertically. A horizontal swipe — Instagram's "next story", a
      * carousel inside a post — is not a new video and must not count.
      */
+    /** True when the scrolling node itself covers most of the window height. */
+    private fun sourceFillsWindow(e: AccessibilityEvent): Boolean {
+        val src = runCatching { e.source }.getOrNull() ?: return false
+        val rect = Rect()
+        runCatching { src.getBoundsInScreen(rect) }
+        val screenHeight = resources.displayMetrics.heightPixels
+        return rect.height() >= (screenHeight * 0.85).toInt()
+    }
+
     private fun isVerticalScroll(e: AccessibilityEvent): Boolean {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) return true
         val dx = e.scrollDeltaX
@@ -854,6 +1042,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         stopLimitWatch()
         mainHandler.removeCallbacksAndMessages(null)
         hideCover()
+        hideBlockCover()
         hidePill()
         dropReelOverlay()
         lastDomain?.let { domain ->
@@ -878,8 +1067,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         private const val ELEM_MAX_CREDIT_MS = 15_000L
         private const val ELEM_MIN_CREDIT_MS = 2_000L
         private const val DETECT_THROTTLE_MS = 400L
-        private const val BACK_COOLDOWN_MS = 2_000L
+        private const val BACK_COOLDOWN_MS = 3_000L
         private const val FULLSCREEN_RATIO = 0.55
+        /** Smallest matched node that may trigger Back (a nav tab must not). */
+        private const val BACK_MIN_COVERAGE = 0.35
+        /** Smallest matched node worth covering with an overlay. */
+        private const val COVER_MIN_COVERAGE = 0.06
+
+        /** How long the block Activity gets to appear before the cover steps in. */
+        private const val BLOCK_FALLBACK_MS = 1_200L
 
         /** Upper bound between limit re-checks while an app stays foreground. */
         private const val MAX_WATCH_DELAY_MS = 4 * 60_000L

@@ -50,10 +50,26 @@ class ReelsTest {
     }
 
     @Test
-    fun `only apps whose whole surface is video accept a bare video node`() {
+    fun `a full-bleed video identifies the short-video feed in every supported app`() {
+        // Every supported app plays its short videos full-bleed. The size gate
+        // (65 % of the window) is what keeps a small inline video in a normal
+        // feed from counting, not a per-app allowlist.
         assertTrue(Reels.isFullFeed("com.zhiliaoapp.musically"))
-        // Instagram must not: a full-bleed video also appears in a normal post.
-        assertFalse(Reels.isFullFeed("com.instagram.android"))
-        assertFalse(Reels.isFullFeed("com.google.android.youtube"))
+        assertTrue(Reels.isFullFeed("com.instagram.android"))
+        assertTrue(Reels.isFullFeed("com.google.android.youtube"))
+        assertTrue(Reels.isFullFeed("com.snapchat.android"))
+        assertFalse(Reels.isFullFeed("com.whatsapp"))
+    }
+
+    @Test
+    fun `repackaged clients resolve to their family`() {
+        // Morphe / Pico / InstaPro style repacks keep neither the label nor a
+        // tidy package name, but the family token is still in there.
+        assertEquals("com.google.android.youtube", Reels.canonical("app.morphe.android.youtube"))
+        assertEquals("com.instagram.android", Reels.canonical("com.pico.instagram"))
+        assertEquals("com.zhiliaoapp.musically", Reels.canonical("com.zhiliaoapp.musically.go"))
+        assertEquals("com.facebook.katana", Reels.canonical("com.facebook.lite"))
+        // Messenger must not inherit Facebook's reel rules.
+        assertEquals("com.facebook.orca", Reels.canonical("com.facebook.orca"))
     }
 }

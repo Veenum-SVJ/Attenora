@@ -41,13 +41,11 @@ object Reels {
     )
 
     /**
-     * Apps whose primary surface *is* full-bleed short video. For these an
-     * oversized video/texture surface is enough on its own.
+     * Apps whose entire foreground is the video feed. For these a scroll of a
+     * near-full-window pager is enough on its own, because their feed exposes
+     * no stable id and the player surface is often absent from the tree.
      */
-    private val fullFeedApps = setOf(
-        "com.zhiliaoapp.musically",
-        "com.ss.android.ugc.trill"
-    )
+    fun isFeedFirst(pkg: String): Boolean = canonical(pkg) == "com.zhiliaoapp.musically"
 
     /** View classes that only appear where a video is actually playing. */
     val videoClasses = listOf("VideoView", "TextureView", "SurfaceView", "PlayerView")
@@ -60,7 +58,20 @@ object Reels {
         "com.instagram.lite" to "com.instagram.android"
     )
 
-    fun canonical(pkg: String): String = aliases[pkg] ?: pkg
+    fun canonical(pkg: String): String {
+        aliases[pkg]?.let { return it }
+        val p = pkg.lowercase()
+        return when {
+            p.contains("youtube") || p.contains("vanced") || p.contains("newpipe") ->
+                "com.google.android.youtube"
+            p.contains("instagram") -> "com.instagram.android"
+            p.contains("tiktok") || p.contains("musically") || p.contains("trill") ||
+                p.contains("aweme") || p.contains("zhiliao") -> "com.zhiliaoapp.musically"
+            p.contains("snapchat") || p.contains("snapenjoy") -> "com.snapchat.android"
+            p.contains("facebook") && !p.contains("orca") -> "com.facebook.katana"
+            else -> pkg
+        }
+    }
 
     /**
      * The other packages that mean the same app (Lite builds, patched clients).
@@ -75,8 +86,14 @@ object Reels {
     /** Marker fragments for [pkg]; empty for anything we do not count. */
     fun markersFor(pkg: String): List<String> = markers[canonical(pkg)] ?: emptyList()
 
-    /** True when a screen-filling video surface alone identifies the feed. */
-    fun isFullFeed(pkg: String): Boolean = canonical(pkg) in fullFeedApps
+    /**
+     * True when a screen-filling video surface alone identifies the feed.
+     * Every supported app plays full-bleed video in its short-video feed, so
+     * this is no longer TikTok-only: Instagram Reels, Shorts, Facebook Reels
+     * and Spotlight all qualify, while their home feeds only show small
+     * inline videos that fail the size gate.
+     */
+    fun isFullFeed(pkg: String): Boolean = canonical(pkg) in markers
 
     /** Packages worth scanning at all (fast reject for everything else). */
     fun appliesTo(pkg: String): Boolean = canonical(pkg) in markers

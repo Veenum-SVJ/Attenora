@@ -82,14 +82,17 @@ object Detectors {
 
     private val specs: Map<String, List<ElementSpec>> = mapOf(
         youtube to listOf(
-            ElementSpec("shorts", texts = listOf("shorts"), ids = listOf("shorts", "reel"), action = DetectAction.AUTO),
+            ElementSpec("shorts", texts = listOf("shorts"), ids = listOf("shorts", "reel_recycler", "reel_watch"), action = DetectAction.AUTO),
             ElementSpec("video_search", texts = listOf("search youtube", "search results"), ids = listOf("searchbar", "search_bar"), action = DetectAction.AUTO),
             ElementSpec("pip", texts = listOf("picture-in-picture", "picture in picture"), ids = listOf("pip", "picture_in_picture"), action = DetectAction.BACK),
             ElementSpec("comments", texts = listOf("comments"), ids = listOf("comment"), action = DetectAction.AUTO)
         ),
         instagram to listOf(
             ElementSpec("stories", texts = listOf("your story", "stories"), ids = listOf("story", "reel_viewer"), action = DetectAction.AUTO),
-            ElementSpec("reels", texts = listOf("reels"), ids = listOf("reels"), action = DetectAction.BACK),
+            // Match the Reels viewer itself, not the word "Reels" — Instagram
+            // keeps that word in its bottom bar on every screen, so the old
+            // text rule pressed Back on the home feed, reloading it in a loop.
+            ElementSpec("reels", ids = listOf("clips_viewer", "clips_", "reel_viewer"), action = DetectAction.BACK),
             ElementSpec("explore", texts = listOf("explore"), ids = listOf("explore"), action = DetectAction.BACK)
         ),
         facebook to listOf(
@@ -127,8 +130,29 @@ object Detectors {
         "com.instagram.lite" to instagram
     )
 
-    fun specsFor(pkg: String): List<ElementSpec> =
-        specs[pkg] ?: specs[aliases[pkg]] ?: emptyList()
+    fun specsFor(pkg: String): List<ElementSpec> = specs[canonical(pkg)] ?: emptyList()
+
+    /**
+     * Map a package to the catalogue entry it should use. Patched clients
+     * (Morphe/ReVanced YouTube, Pico/InstaPro Instagram, TikTok's `trill`
+     * build) usually keep the original package, but some repackage — so fall
+     * back to a name match instead of silently applying no rules at all.
+     */
+    fun canonical(pkg: String): String {
+        if (specs.containsKey(pkg)) return pkg
+        aliases[pkg]?.let { return it }
+        val p = pkg.lowercase()
+        return when {
+            p.contains("youtube") || p.contains("vanced") || p.contains("newpipe") -> youtube
+            p.contains("instagram") -> instagram
+            p.contains("tiktok") || p.contains("musically") || p.contains("trill") || p.contains("aweme") -> tiktok
+            p.contains("snapchat") || p.contains("snapenjoy") -> snapchat
+            p.contains("facebook") && !p.contains("orca") -> facebook
+            p.contains("whatsapp") -> whatsapp
+            p.contains("orca") -> messenger
+            else -> pkg
+        }
+    }
 
     /** Packages worth traversing at all (fast reject for everything else). */
     fun appliesTo(pkg: String): Boolean = specsFor(pkg).isNotEmpty()
