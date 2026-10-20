@@ -27,7 +27,6 @@ object Alarms {
     const val ACTION_SCHEDULE_END = "dev.opensource.focusguard.action.SCHEDULE_END"
     const val ACTION_REMINDER = "dev.opensource.focusguard.action.DAILY_REMINDER"
     const val ACTION_WEEKLY = "dev.opensource.focusguard.action.WEEKLY_SUMMARY"
-    const val ACTION_NIGHTOWL = "dev.opensource.focusguard.action.NIGHT_OWL"
     const val EXTRA_SCHEDULE_ID = "schedule_id"
     private const val WINDOW_MS = 60_000L
     private const val DAY_MS = 24L * 60 * 60 * 1000L
@@ -72,15 +71,6 @@ object Alarms {
                 return
             }
         }
-    }
-
-    fun rearmNightOwl(context: Context, on: Boolean, minuteOfDay: Int) {
-        val pi = nightOwlPendingIntent(context)
-        if (!on) {
-            context.getSystemService(AlarmManager::class.java)?.cancel(pi)
-            return
-        }
-        setDailyAlarm(context, pi, minuteOfDay)
     }
 
     private fun setDailyAlarm(context: Context, pi: PendingIntent1, minuteOfDay: Int) {
@@ -145,9 +135,6 @@ object Alarms {
     private fun weeklyPendingIntent(context: Context): PendingIntent1 =
         actionPendingIntent(context, ACTION_WEEKLY, "weekly".hashCode(), 0L)
 
-    private fun nightOwlPendingIntent(context: Context): PendingIntent1 =
-        actionPendingIntent(context, ACTION_NIGHTOWL, "nightowl".hashCode(), 0L)
-
     private fun actionPendingIntent(context: Context, action: String, requestCode: Int, id: Long): PendingIntent1 {
         val intent = Intent(context, ScheduleAlarmReceiver::class.java)
             .setAction(action)
@@ -183,7 +170,6 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
                     Alarms.ACTION_SCHEDULE_END -> handleScheduleEnd(context, container, intent)
                     Alarms.ACTION_REMINDER -> handleReminder(context, container)
                     Alarms.ACTION_WEEKLY -> handleWeekly(context, container)
-                    Alarms.ACTION_NIGHTOWL -> handleNightOwl(context, container)
                 }
             } finally {
                 pending.finish()
@@ -244,15 +230,6 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
             "This week: ${formatDuration(total)} of screen time across ${rows.map { it.packageName }.distinct().size} apps."
         )
     }
-
-    private suspend fun handleNightOwl(context: Context, container: dev.opensource.focusguard.AppContainer) {
-        Alarms.rearmNightOwl(context, container.settings.nightOwlOn.first(), container.settings.nightOwlMinute.first())
-        Alarms.notifyUser(
-            context,
-            "Time to wind down",
-            "It's your bedtime reminder — hand off the phone and get some rest."
-        )
-    }
 }
 
 class BootReceiver : BroadcastReceiver() {
@@ -274,7 +251,6 @@ class BootReceiver : BroadcastReceiver() {
                     container.settings.weeklyDay.first(),
                     container.settings.weeklyMinute.first()
                 )
-                Alarms.rearmNightOwl(context, container.settings.nightOwlOn.first(), container.settings.nightOwlMinute.first())
             } finally {
                 pending.finish()
             }

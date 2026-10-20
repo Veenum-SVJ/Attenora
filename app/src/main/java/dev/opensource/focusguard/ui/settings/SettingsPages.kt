@@ -691,7 +691,7 @@ fun DailyReminderScreen(onBack: () -> Unit) {
         FgGroup(Modifier.padding(horizontal = 16.dp)) {
             NavRow(
                 title = "Usage notifications",
-                subtitle = "Weekly summary, night nudges, block alerts",
+                subtitle = "Weekly summary and block alerts",
                 icon = FgIcons.Bell,
                 onClick = { showNotifications = true }
             )

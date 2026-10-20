@@ -68,8 +68,6 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
     val weeklyOn by settings.weeklyOn.collectAsState(initial = true)
     val weeklyDay by settings.weeklyDay.collectAsState(initial = 0)
     val weeklyMinute by settings.weeklyMinute.collectAsState(initial = 20 * 60)
-    val nightOwlOn by settings.nightOwlOn.collectAsState(initial = false)
-    val nightOwlMinute by settings.nightOwlMinute.collectAsState(initial = 22 * 60)
     val muteBlocked by settings.muteBlocked.collectAsState(initial = false)
 
     var notifPermission by remember { mutableStateOf(hasNotificationPermission(context)) }
@@ -172,20 +170,6 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
                         }
                     }
                 )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                TimeToggleRow(
-                    title = "Night Owl",
-                    subtitle = "Bedtime nudge at ${formatClock(nightOwlMinute)}",
-                    icon = FgIcons.Moon,
-                    on = nightOwlOn,
-                    onChangeTime = { timeTarget = "nightowl" },
-                    onToggle = { on ->
-                        scope.launch {
-                            settings.setNightOwl(on, nightOwlMinute)
-                            Alarms.rearmNightOwl(context, on, nightOwlMinute)
-                        }
-                    }
-                )
             }
         }
 
@@ -248,8 +232,7 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
     timeTarget?.let { target ->
         val initial = when (target) {
             "reminder" -> reminderMinute.coerceAtLeast(8 * 60)
-            "weekly" -> weeklyMinute
-            else -> nightOwlMinute
+            else -> weeklyMinute
         }
         TimePickerDialogShared(
             title = "Pick a time",
@@ -260,13 +243,9 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
                         "reminder" -> {
                             settings.setReminderMinute(minute)
                         }
-                        "weekly" -> {
+                        else -> {
                             settings.setWeekly(weeklyOn, weeklyDay, minute)
                             Alarms.rearmWeekly(context, weeklyOn, weeklyDay, minute)
-                        }
-                        else -> {
-                            settings.setNightOwl(true, minute)
-                            Alarms.rearmNightOwl(context, true, minute)
                         }
                     }
                 }

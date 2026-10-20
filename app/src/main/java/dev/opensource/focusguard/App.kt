@@ -163,7 +163,7 @@ class AppContainer(val app: Context) {
                 .collect { Alarms.setReminderAlarm(app, it) }
         }
         scope.launch {
-            // Weekly summary + morning routine + night owl (all inexact).
+            // Weekly summary and reminders (all inexact).
             settings.weeklyOn.distinctUntilChanged().collect {
                 Alarms.rearmWeekly(
                     app,
@@ -181,11 +181,6 @@ class AppContainer(val app: Context) {
                     settings.weeklyDay.first(),
                     settings.weeklyMinute.first()
                 )
-            }
-        }
-        scope.launch {
-            settings.nightOwlMinute.distinctUntilChanged().collect {
-                Alarms.rearmNightOwl(app, settings.nightOwlOn.first(), it)
             }
         }
         scope.launch {

@@ -64,8 +64,6 @@ class SettingsRepository(private val context: Context) {
         val WEEKLY_ON = booleanPreferencesKey("weekly_on")
         val WEEKLY_DAY = intPreferencesKey("weekly_day")   // Mon0
         val WEEKLY_MINUTE = intPreferencesKey("weekly_minute")
-        val NIGHTOWL_ON = booleanPreferencesKey("nightowl_on")
-        val NIGHTOWL_MINUTE = intPreferencesKey("nightowl_minute")
         val MUTE_BLOCKED = booleanPreferencesKey("mute_blocked")
 
         // Curbox-port: unlock extras, grayscale, focus sessions
@@ -120,8 +118,6 @@ class SettingsRepository(private val context: Context) {
     val weeklyOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.WEEKLY_ON] ?: true }
     val weeklyDay: Flow<Int> = context.dataStore.data.map { it[Keys.WEEKLY_DAY] ?: 0 }
     val weeklyMinute: Flow<Int> = context.dataStore.data.map { it[Keys.WEEKLY_MINUTE] ?: 20 * 60 }
-    val nightOwlOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.NIGHTOWL_ON] ?: false }
-    val nightOwlMinute: Flow<Int> = context.dataStore.data.map { it[Keys.NIGHTOWL_MINUTE] ?: 22 * 60 }
     val muteBlocked: Flow<Boolean> = context.dataStore.data.map { it[Keys.MUTE_BLOCKED] ?: false }
 
     // ---- Curbox-port: unlock extras, grayscale, focus sessions ----
@@ -187,10 +183,6 @@ class SettingsRepository(private val context: Context) {
         it[Keys.WEEKLY_ON] = on
         it[Keys.WEEKLY_DAY] = day.coerceIn(0, 6)
         it[Keys.WEEKLY_MINUTE] = minute.coerceIn(0, 1439)
-    }
-    suspend fun setNightOwl(on: Boolean, minute: Int) = context.dataStore.edit {
-        it[Keys.NIGHTOWL_ON] = on
-        it[Keys.NIGHTOWL_MINUTE] = minute.coerceIn(0, 1439)
     }
     suspend fun setMuteBlocked(on: Boolean) = context.dataStore.edit { it[Keys.MUTE_BLOCKED] = on }
 
