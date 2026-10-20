@@ -491,6 +491,12 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
     }
 
     val sites by container.blocklist.collectAsState()
+    val today by container.usage.todayFlow().collectAsState(initial = emptyList())
+    // Most-used first, so the apps that actually need a limit are at the top
+    // instead of buried under an alphabetical list.
+    val usedByPkg = remember(today) {
+        today.groupBy { it.packageName }.mapValues { (_, rows) -> rows.sumOf { it.usedMs } }
+    }
 
     androidx.compose.material3.Surface(
         modifier = Modifier.fillMaxSize(),
@@ -554,7 +560,10 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
                                     appLabel(context, it).contains(search, ignoreCase = true) ||
                                     it.contains(search, ignoreCase = true)
                             }
-                            .sortedBy { appLabel(context, it).lowercase() }
+                            .sortedWith(
+                                compareByDescending<String> { usedByPkg[it] ?: 0L }
+                                    .thenBy { appLabel(context, it).lowercase() }
+                            )
                         items(filtered, key = { it }) { pkg ->
                             TargetRow(
                                 leading = { AppIcon(pkg, size = 36.dp) },
