@@ -876,10 +876,6 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         }
     }
 
-    /**
-     * Feeds page vertically. A horizontal swipe — Instagram's "next story", a
-     * carousel inside a post — is not a new video and must not count.
-     */
     /** True when the scrolling node itself covers most of the window height. */
     private fun sourceFillsWindow(e: AccessibilityEvent): Boolean {
         val src = runCatching { e.source }.getOrNull() ?: return false
@@ -889,6 +885,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         return rect.height() >= (screenHeight * 0.85).toInt()
     }
 
+    /**
+     * Feeds page vertically. A horizontal swipe — Instagram's "next story", a
+     * carousel inside a post — is not a new video and must not count.
+     */
     private fun isVerticalScroll(e: AccessibilityEvent): Boolean {
         if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.P) return true
         val dx = e.scrollDeltaX
@@ -1060,7 +1060,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val MAX_NODES_ADDRESS = 250
-        private const val MAX_NODES_DETECT = 300
+        private const val MAX_NODES_DETECT = 500
         private const val MIN_CHECK_INTERVAL_MS = 1_200L
         private const val WEB_MAX_CREDIT_MS = 60_000L
         private const val WEB_MIN_CREDIT_MS = 1_000L
@@ -1084,7 +1084,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         private const val LIMIT_RECHECK_MS = 20_000L
 
         // Reel counter: a bounded marker scan, then one count per vertical swipe.
-        private const val REEL_MAX_NODES = 120
+        // The cap is generous because flagIncludeNotImportantViews (needed to
+        // see SurfaceView/TextureView players at all) makes every tree bigger,
+        // so the video node can sit deeper than it used to.
+        private const val REEL_MAX_NODES = 600
         private const val REEL_SCAN_INTERVAL_MS = 2_000L
         /** How long a mark survives a scan that came back empty. */
         private const val REEL_MARK_STICKY_MS = 5_000L
