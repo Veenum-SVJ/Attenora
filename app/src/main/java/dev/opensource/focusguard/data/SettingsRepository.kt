@@ -29,18 +29,6 @@ object ChallengeMode {
     const val CHALLENGE = "challenge"
 }
 
-/**
- * What the block prompt requires before granting more time
- * (Curbox-style unlock challenges).
- */
-object UnlockChallenge {
-    const val OFF = "off"      // grant freely — original behavior
-    const val NONE = "none"    // stay blocked: never grant
-    const val MATH = "math"    // solve arithmetic
-    const val QUOTE = "quote"  // retype the shown sentence
-    const val INTENT = "intent" // state why you are unlocking
-}
-
 class SettingsRepository(private val context: Context) {
 
     private object Keys {
@@ -58,7 +46,6 @@ class SettingsRepository(private val context: Context) {
         val RESET_HOUR = intPreferencesKey("reset_hour")
         val CHALLENGE_MODE = stringPreferencesKey("challenge_mode")
         val CHALLENGE_TYPE = stringPreferencesKey("challenge_type") // quote | math
-        val CHALLENGE_TEXT = stringPreferencesKey("challenge_text")
         val IGNORE_WEBSITES = booleanPreferencesKey("ignore_websites")
         val COUNTDOWN_ON = booleanPreferencesKey("countdown_on")
         val REEL_COUNTER_ON = booleanPreferencesKey("reel_counter_on")
@@ -77,20 +64,15 @@ class SettingsRepository(private val context: Context) {
         val WEEKLY_ON = booleanPreferencesKey("weekly_on")
         val WEEKLY_DAY = intPreferencesKey("weekly_day")   // Mon0
         val WEEKLY_MINUTE = intPreferencesKey("weekly_minute")
-        val MORNING_ON = booleanPreferencesKey("morning_on")
-        val MORNING_MINUTE = intPreferencesKey("morning_minute")
         val NIGHTOWL_ON = booleanPreferencesKey("nightowl_on")
         val NIGHTOWL_MINUTE = intPreferencesKey("nightowl_minute")
         val MUTE_BLOCKED = booleanPreferencesKey("mute_blocked")
 
         // Curbox-port: unlock extras, grayscale, focus sessions
-        val UNLOCK_CHALLENGE = stringPreferencesKey("unlock_challenge") // off|none|math|quote|intent
         val UNLOCK_DELAY_SEC = intPreferencesKey("unlock_delay_sec")
         val UNLOCK_QUOTA = intPreferencesKey("unlock_quota")
         val UNLOCK_USED_DAY = stringPreferencesKey("unlock_used_day")
         val UNLOCK_USED_COUNT = intPreferencesKey("unlock_used_count")
-        val INTENT_LAST = stringPreferencesKey("intent_last")
-        val INTENT_AT = longPreferencesKey("intent_at")
         val GRAYSCALE_APPS = stringSetPreferencesKey("grayscale_apps")
         val GRAY_ACTIVE = booleanPreferencesKey("gray_active") // we applied the filter
         val FOCUS_START = longPreferencesKey("focus_start_ms")
@@ -117,7 +99,6 @@ class SettingsRepository(private val context: Context) {
     val resetHour: Flow<Int> = context.dataStore.data.map { (it[Keys.RESET_HOUR] ?: 0).coerceIn(0, 23) }
     val challengeMode: Flow<String> = context.dataStore.data.map { it[Keys.CHALLENGE_MODE] ?: ChallengeMode.NONE }
     val challengeType: Flow<String> = context.dataStore.data.map { it[Keys.CHALLENGE_TYPE] ?: "quote" }
-    val challengeText: Flow<String> = context.dataStore.data.map { it[Keys.CHALLENGE_TEXT] ?: "" }
     val ignoreWebsites: Flow<Boolean> = context.dataStore.data.map { it[Keys.IGNORE_WEBSITES] ?: false }
     val countdownOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.COUNTDOWN_ON] ?: true }
     /** Short-video counter + its live on-screen count. On by default. */
@@ -139,22 +120,17 @@ class SettingsRepository(private val context: Context) {
     val weeklyOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.WEEKLY_ON] ?: true }
     val weeklyDay: Flow<Int> = context.dataStore.data.map { it[Keys.WEEKLY_DAY] ?: 0 }
     val weeklyMinute: Flow<Int> = context.dataStore.data.map { it[Keys.WEEKLY_MINUTE] ?: 20 * 60 }
-    val morningOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.MORNING_ON] ?: false }
-    val morningMinute: Flow<Int> = context.dataStore.data.map { it[Keys.MORNING_MINUTE] ?: 8 * 60 }
     val nightOwlOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.NIGHTOWL_ON] ?: false }
     val nightOwlMinute: Flow<Int> = context.dataStore.data.map { it[Keys.NIGHTOWL_MINUTE] ?: 22 * 60 }
     val muteBlocked: Flow<Boolean> = context.dataStore.data.map { it[Keys.MUTE_BLOCKED] ?: false }
 
     // ---- Curbox-port: unlock extras, grayscale, focus sessions ----
-    val unlockChallenge: Flow<String> = context.dataStore.data.map { it[Keys.UNLOCK_CHALLENGE] ?: UnlockChallenge.OFF }
     /** Seconds the unlock buttons stay disabled after the prompt appears (0..60). */
     val unlockDelaySec: Flow<Int> = context.dataStore.data.map { (it[Keys.UNLOCK_DELAY_SEC] ?: 0).coerceIn(0, 60) }
     /** Unlocks allowed per usage day; 0 = unlimited. */
     val unlockQuota: Flow<Int> = context.dataStore.data.map { (it[Keys.UNLOCK_QUOTA] ?: 3).coerceIn(0, 20) }
     val unlockUsedDay: Flow<String> = context.dataStore.data.map { it[Keys.UNLOCK_USED_DAY] ?: "" }
     val unlockUsedCount: Flow<Int> = context.dataStore.data.map { it[Keys.UNLOCK_USED_COUNT] ?: 0 }
-    val intentLast: Flow<String> = context.dataStore.data.map { it[Keys.INTENT_LAST] ?: "" }
-    val intentAt: Flow<Long> = context.dataStore.data.map { it[Keys.INTENT_AT] ?: 0L }
     val grayscaleApps: Flow<Set<String>> = context.dataStore.data.map { it[Keys.GRAYSCALE_APPS] ?: emptySet() }
     /** True while FocusGuard itself has the grayscale filter applied. */
     val grayActive: Flow<Boolean> = context.dataStore.data.map { it[Keys.GRAY_ACTIVE] ?: false }
@@ -193,7 +169,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun setResetHour(hour: Int) = context.dataStore.edit { it[Keys.RESET_HOUR] = hour.coerceIn(0, 23) }
     suspend fun setChallengeMode(mode: String) = context.dataStore.edit { it[Keys.CHALLENGE_MODE] = mode }
     suspend fun setChallengeType(type: String) = context.dataStore.edit { it[Keys.CHALLENGE_TYPE] = type }
-    suspend fun setChallengeText(text: String) = context.dataStore.edit { it[Keys.CHALLENGE_TEXT] = text }
     suspend fun setIgnoreWebsites(on: Boolean) = context.dataStore.edit { it[Keys.IGNORE_WEBSITES] = on }
     suspend fun setCountdownOn(on: Boolean) = context.dataStore.edit { it[Keys.COUNTDOWN_ON] = on }
     suspend fun setReelCounter(on: Boolean) = context.dataStore.edit { it[Keys.REEL_COUNTER_ON] = on }
@@ -213,23 +188,12 @@ class SettingsRepository(private val context: Context) {
         it[Keys.WEEKLY_DAY] = day.coerceIn(0, 6)
         it[Keys.WEEKLY_MINUTE] = minute.coerceIn(0, 1439)
     }
-    suspend fun setMorning(on: Boolean, minute: Int) = context.dataStore.edit {
-        it[Keys.MORNING_ON] = on
-        it[Keys.MORNING_MINUTE] = minute.coerceIn(0, 1439)
-    }
     suspend fun setNightOwl(on: Boolean, minute: Int) = context.dataStore.edit {
         it[Keys.NIGHTOWL_ON] = on
         it[Keys.NIGHTOWL_MINUTE] = minute.coerceIn(0, 1439)
     }
     suspend fun setMuteBlocked(on: Boolean) = context.dataStore.edit { it[Keys.MUTE_BLOCKED] = on }
 
-    suspend fun setUnlockChallenge(type: String) = context.dataStore.edit { p ->
-        val valid = setOf(
-            UnlockChallenge.OFF, UnlockChallenge.NONE, UnlockChallenge.MATH,
-            UnlockChallenge.QUOTE, UnlockChallenge.INTENT
-        )
-        p[Keys.UNLOCK_CHALLENGE] = if (type in valid) type else UnlockChallenge.OFF
-    }
     suspend fun setUnlockDelay(seconds: Int) =
         context.dataStore.edit { it[Keys.UNLOCK_DELAY_SEC] = seconds.coerceIn(0, 60) }
     suspend fun setUnlockQuota(quota: Int) =
@@ -238,10 +202,6 @@ class SettingsRepository(private val context: Context) {
     suspend fun recordUnlock(day: String, count: Int) = context.dataStore.edit {
         it[Keys.UNLOCK_USED_DAY] = day
         it[Keys.UNLOCK_USED_COUNT] = count
-    }
-    suspend fun setIntent(text: String, at: Long) = context.dataStore.edit {
-        it[Keys.INTENT_LAST] = text
-        it[Keys.INTENT_AT] = at
     }
     suspend fun setGrayscaleApp(pkg: String, on: Boolean) = context.dataStore.edit { p ->
         val apps = p[Keys.GRAYSCALE_APPS] ?: emptySet()

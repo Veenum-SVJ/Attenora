@@ -68,8 +68,6 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
     val weeklyOn by settings.weeklyOn.collectAsState(initial = true)
     val weeklyDay by settings.weeklyDay.collectAsState(initial = 0)
     val weeklyMinute by settings.weeklyMinute.collectAsState(initial = 20 * 60)
-    val morningOn by settings.morningOn.collectAsState(initial = false)
-    val morningMinute by settings.morningMinute.collectAsState(initial = 8 * 60)
     val nightOwlOn by settings.nightOwlOn.collectAsState(initial = false)
     val nightOwlMinute by settings.nightOwlMinute.collectAsState(initial = 22 * 60)
     val muteBlocked by settings.muteBlocked.collectAsState(initial = false)
@@ -176,20 +174,6 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
                 )
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                 TimeToggleRow(
-                    title = "Morning Routine",
-                    subtitle = "Set your intention at ${formatClock(morningMinute)}",
-                    icon = FgIcons.Sun,
-                    on = morningOn,
-                    onChangeTime = { timeTarget = "morning" },
-                    onToggle = { on ->
-                        scope.launch {
-                            settings.setMorning(on, morningMinute)
-                            Alarms.rearmMorning(context, on, morningMinute)
-                        }
-                    }
-                )
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                TimeToggleRow(
                     title = "Night Owl",
                     subtitle = "Bedtime nudge at ${formatClock(nightOwlMinute)}",
                     icon = FgIcons.Moon,
@@ -265,7 +249,6 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
         val initial = when (target) {
             "reminder" -> reminderMinute.coerceAtLeast(8 * 60)
             "weekly" -> weeklyMinute
-            "morning" -> morningMinute
             else -> nightOwlMinute
         }
         TimePickerDialogShared(
@@ -280,10 +263,6 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
                         "weekly" -> {
                             settings.setWeekly(weeklyOn, weeklyDay, minute)
                             Alarms.rearmWeekly(context, weeklyOn, weeklyDay, minute)
-                        }
-                        "morning" -> {
-                            settings.setMorning(true, minute)
-                            Alarms.rearmMorning(context, true, minute)
                         }
                         else -> {
                             settings.setNightOwl(true, minute)

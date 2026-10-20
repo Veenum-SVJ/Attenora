@@ -184,11 +184,6 @@ class AppContainer(val app: Context) {
             }
         }
         scope.launch {
-            settings.morningMinute.distinctUntilChanged().collect {
-                Alarms.rearmMorning(app, settings.morningOn.first(), it)
-            }
-        }
-        scope.launch {
             settings.nightOwlMinute.distinctUntilChanged().collect {
                 Alarms.rearmNightOwl(app, settings.nightOwlOn.first(), it)
             }

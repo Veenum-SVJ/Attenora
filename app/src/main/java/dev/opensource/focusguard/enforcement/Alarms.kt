@@ -27,7 +27,6 @@ object Alarms {
     const val ACTION_SCHEDULE_END = "dev.opensource.focusguard.action.SCHEDULE_END"
     const val ACTION_REMINDER = "dev.opensource.focusguard.action.DAILY_REMINDER"
     const val ACTION_WEEKLY = "dev.opensource.focusguard.action.WEEKLY_SUMMARY"
-    const val ACTION_MORNING = "dev.opensource.focusguard.action.MORNING"
     const val ACTION_NIGHTOWL = "dev.opensource.focusguard.action.NIGHT_OWL"
     const val EXTRA_SCHEDULE_ID = "schedule_id"
     private const val WINDOW_MS = 60_000L
@@ -73,15 +72,6 @@ object Alarms {
                 return
             }
         }
-    }
-
-    fun rearmMorning(context: Context, on: Boolean, minuteOfDay: Int) {
-        val pi = morningPendingIntent(context)
-        if (!on) {
-            context.getSystemService(AlarmManager::class.java)?.cancel(pi)
-            return
-        }
-        setDailyAlarm(context, pi, minuteOfDay)
     }
 
     fun rearmNightOwl(context: Context, on: Boolean, minuteOfDay: Int) {
@@ -155,9 +145,6 @@ object Alarms {
     private fun weeklyPendingIntent(context: Context): PendingIntent1 =
         actionPendingIntent(context, ACTION_WEEKLY, "weekly".hashCode(), 0L)
 
-    private fun morningPendingIntent(context: Context): PendingIntent1 =
-        actionPendingIntent(context, ACTION_MORNING, "morning".hashCode(), 0L)
-
     private fun nightOwlPendingIntent(context: Context): PendingIntent1 =
         actionPendingIntent(context, ACTION_NIGHTOWL, "nightowl".hashCode(), 0L)
 
@@ -196,7 +183,6 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
                     Alarms.ACTION_SCHEDULE_END -> handleScheduleEnd(context, container, intent)
                     Alarms.ACTION_REMINDER -> handleReminder(context, container)
                     Alarms.ACTION_WEEKLY -> handleWeekly(context, container)
-                    Alarms.ACTION_MORNING -> handleMorning(context, container)
                     Alarms.ACTION_NIGHTOWL -> handleNightOwl(context, container)
                 }
             } finally {
@@ -259,15 +245,6 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
         )
     }
 
-    private suspend fun handleMorning(context: Context, container: dev.opensource.focusguard.AppContainer) {
-        Alarms.rearmMorning(context, container.settings.morningOn.first(), container.settings.morningMinute.first())
-        Alarms.notifyUser(
-            context,
-            "Good morning",
-            "Set today's intention: check your limits before the day gets busy."
-        )
-    }
-
     private suspend fun handleNightOwl(context: Context, container: dev.opensource.focusguard.AppContainer) {
         Alarms.rearmNightOwl(context, container.settings.nightOwlOn.first(), container.settings.nightOwlMinute.first())
         Alarms.notifyUser(
@@ -297,7 +274,6 @@ class BootReceiver : BroadcastReceiver() {
                     container.settings.weeklyDay.first(),
                     container.settings.weeklyMinute.first()
                 )
-                Alarms.rearmMorning(context, container.settings.morningOn.first(), container.settings.morningMinute.first())
                 Alarms.rearmNightOwl(context, container.settings.nightOwlOn.first(), container.settings.nightOwlMinute.first())
             } finally {
                 pending.finish()

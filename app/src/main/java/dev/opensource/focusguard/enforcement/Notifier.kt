@@ -156,7 +156,7 @@ object Notifier {
         }
     }
 
-    /** Plain message sender used by alarms (daily/weekly/morning/night-owl/schedule). */
+    /** Plain message sender used by alarms (daily/weekly/night-owl/schedule). */
     fun message(context: Context, id: Int, title: String, text: String, channel: String = CHANNEL_USAGE) {
         post(context, id, base(context, channel)
             .setContentTitle(title)
