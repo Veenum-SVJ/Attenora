@@ -487,6 +487,10 @@ interface SessionGrantDao {
     @Query("SELECT * FROM session_grants")
     suspend fun all(): List<SessionGrant>
 
+    /** Live window end for [targetId], or null when no session has run. */
+    @Query("SELECT untilMs FROM session_grants WHERE targetId = :targetId")
+    suspend fun until(targetId: String): Long?
+
     @Upsert
     suspend fun upsert(grant: SessionGrant)
 

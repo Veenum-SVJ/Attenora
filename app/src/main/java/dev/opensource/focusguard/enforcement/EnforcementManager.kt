@@ -63,8 +63,8 @@ class EnforcementManager(
         val availableAtMs: Long = 0L
     )
 
-    /** target to grant -> fixed session length in minutes. */
-    data class AutoSession(val targetId: String, val minutes: Int)
+    /** target to grant -> fixed session length in minutes, and its cooldown. */
+    data class AutoSession(val targetId: String, val minutes: Int, val cooldownMs: Long)
 
     val limits: StateFlow<List<UsageLimit>> =
         db.usageLimitDao().observeAll()
@@ -104,6 +104,10 @@ class EnforcementManager(
         scope.launch { evaluate(target) }
     }
 
+    /** True when an enabled limit (app, category or everything) covers [pkg]. */
+    fun hasLimitFor(pkg: String): Boolean =
+        limits.value.any { it.enabled && targetCovers(it, pkg) }
+
     suspend fun evaluate(pkg: String, now: Long = System.currentTimeMillis()): Decision {
         if (pkg == context.packageName) return Decision(blocked = false)
         if (Allowlist.isAllowlisted(pkg)) return Decision(blocked = false)
@@ -128,12 +132,19 @@ class EnforcementManager(
         // Variable session limit with no active grant → start the fixed-
         // length session silently (set once when the limit was created).
         decision.autoSession?.let { auto ->
-            db.sessionGrantDao().upsert(
-                dev.opensource.focusguard.data.SessionGrant(
-                    targetId = auto.targetId,
-                    untilMs = now + auto.minutes * 60_000L
+            // Re-read the stored grant before writing. [sessionGrants] is a
+            // Room flow and can lag a write by a few ms; granting from that
+            // stale read would restart a running session and push its expiry
+            // forward, which is how a 10-minute session could look endless.
+            val stored = runCatching { db.sessionGrantDao().until(auto.targetId) }.getOrNull() ?: 0L
+            if (LimitEngine.sessionAction(stored, auto.cooldownMs, now) == LimitEngine.SessionAction.GRANT) {
+                db.sessionGrantDao().upsert(
+                    dev.opensource.focusguard.data.SessionGrant(
+                        targetId = auto.targetId,
+                        untilMs = now + auto.minutes * 60_000L
+                    )
                 )
-            )
+            }
         }
 
         maybeWarnFiveMinutes(pkg, decision.remainingMs, now)
@@ -193,7 +204,12 @@ class EnforcementManager(
 
                 LimitType.SESSION -> {
                     val target = sessionTarget(limit, pkg)
-                    val grantUntil = sessionGrants.value[target] ?: 0L
+                    // Read the committed row, not the Room flow: a flow that
+                    // lags a write by a few ms made a running session look
+                    // unstarted, and re-granting from that restarted the
+                    // clock instead of ever letting it expire.
+                    val grantUntil = runCatching { db.sessionGrantDao().until(target) }
+                        .getOrNull() ?: 0L
                     when (LimitEngine.sessionAction(grantUntil, limit.cooldownMs, now)) {
                         LimitEngine.SessionAction.ACTIVE -> {
                             // Count the live session toward "remaining" so the
@@ -215,7 +231,7 @@ class EnforcementManager(
                         }
                         LimitEngine.SessionAction.GRANT -> {
                             // Grant the fixed length stored when the limit was made.
-                            autoSession = AutoSession(target, sessionMinutes(limit))
+                            autoSession = AutoSession(target, sessionMinutes(limit), limit.cooldownMs)
                         }
                     }
                 }

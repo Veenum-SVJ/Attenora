@@ -19,7 +19,9 @@ import dev.opensource.focusguard.domain.UrlMatcher
 import dev.opensource.focusguard.ui.common.formatDuration
 import dev.opensource.focusguard.util.Grayscale
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
 
@@ -49,7 +51,9 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     // --- element state
     private val enabledRules = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private var rulesJob: kotlinx.coroutines.Job? = null
+    private var liveJob: kotlinx.coroutines.Job? = null
     private var lastDetectAt = 0L
+    private var lastLimitRecheckAt = 0L
     private var lastBackAt = 0L
     private var lastForeground: String? = null
     private val lastSeen = HashMap<String, Long>(8)
@@ -131,6 +135,42 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         mainHandler.removeCallbacks(limitWatcher)
     }
 
+    /**
+     * A clock-based limit must not depend on the single delayed watcher
+     * surviving — an OEM can kill or freeze the process mid-session. Every app
+     * emits content changes, so a throttled re-check here re-arms the block
+     * within seconds of the deadline even when the watcher was lost.
+     */
+    private fun recheckLimitIfCovered(pkg: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastLimitRecheckAt < LIMIT_RECHECK_MS) return
+        lastLimitRecheckAt = now
+        if (!container.enforcement.hasLimitFor(pkg)) return
+        container.scope.launch {
+            runCatching { container.enforcement.evaluate(pkg) }
+        }
+        if (watchPkg == null) startLimitWatch(pkg)
+    }
+
+    /**
+     * A limit or schedule row changed. Re-decide whatever is genuinely on
+     * screen right now — [lastForeground] is deliberately not used, because it
+     * still points at the app the user came from while FocusGuard's own
+     * settings are open (our package is filtered out of window events), and
+     * blocking that app behind the settings would be wrong.
+     */
+    private fun recheckForeground() {
+        mainHandler.post {
+            val pkg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+                ?: return@post
+            if (pkg == packageName || Allowlist.isAllowlisted(pkg)) return@post
+            container.scope.launch {
+                runCatching { container.enforcement.evaluate(pkg) }
+            }
+            startLimitWatch(pkg)
+        }
+    }
+
     // --- reel counter state
     // Marker-first: [reelMarked] flips on only when a supported app is actually
     // showing its short-video feed, and a swipe then adds one to today's count.
@@ -154,6 +194,18 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                     .groupBy({ it.packageName }, { it.element })
                     .mapValues { (_, keys) -> keys.toSet() }
             }
+        }
+        // Live limits and schedules. The enforcement data is Room-backed, so an
+        // edit in Settings is already visible to the next decision — but a
+        // decision only ran on an app switch, so a limit added while the target
+        // app stayed open waited for the next window event. Re-deciding on the
+        // row change instead makes a limit/schedule edit take effect at once.
+        // Event-driven: the collector wakes only when a row actually changes.
+        liveJob = container.scope.launch {
+            merge(
+                container.enforcement.limits.drop(1),
+                container.enforcement.schedules.drop(1)
+            ).collect { recheckForeground() }
         }
         runCatching {
             registerReceiver(screenOffReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
@@ -201,6 +253,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                     }
                 }
                 noteReelSurface(pkg)
+                recheckLimitIfCovered(pkg)
                 if (pkg in BROWSERS) checkWebsite(e, pkg)
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
@@ -366,13 +419,12 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
             y = 180
         }
-        runCatching {
-            wm.addView(tv, params)
-            pillView = tv
-            pillShown = true
-            mainHandler.removeCallbacks(pillTicker)
-            mainHandler.postDelayed(pillTicker, 250L)
-        }
+        val added = runCatching { wm.addView(tv, params) }
+        if (added.isFailure) return
+        pillView = tv
+        pillShown = true
+        mainHandler.removeCallbacks(pillTicker)
+        mainHandler.postDelayed(pillTicker, 250L)
     }
 
     private fun hidePill() {
@@ -796,6 +848,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         container.a11yConnected = false
         rulesJob?.cancel()
+        liveJob?.cancel()
         runCatching { unregisterReceiver(screenOffReceiver) }
         restoreIfOurs()
         stopLimitWatch()
@@ -830,6 +883,9 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
         /** Upper bound between limit re-checks while an app stays foreground. */
         private const val MAX_WATCH_DELAY_MS = 4 * 60_000L
+
+        /** Throttle for the content-change re-check that recovers a lost watch. */
+        private const val LIMIT_RECHECK_MS = 20_000L
 
         // Reel counter: a bounded marker scan, then one count per vertical swipe.
         private const val REEL_MAX_NODES = 120
