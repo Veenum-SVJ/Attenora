@@ -33,10 +33,14 @@ object Reels {
         "com.snapchat.android" to listOf(
             "spotlight"
         ),
-        // TikTok exposes no stable feed id, so it also qualifies on a
-        // screen-filling video surface — see [fullFeedApps].
+        // TikTok publishes obfuscated ids (v5i, jjq, 05rH…) except for the
+        // player itself: on the For You feed the tree carries
+        // "…:id/player_view" at ~94% of the screen and
+        // "…:id/video_container_area" around it. Both were confirmed on a
+        // real 2026 build; the old guesses (video_feed/feed_video) matched
+        // nothing, which is why TikTok alone never counted.
         "com.zhiliaoapp.musically" to listOf(
-            "video_feed", "feed_video", "reel"
+            "player_view", "video_container_area", "video_feed", "feed_video"
         )
     )
 

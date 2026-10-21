@@ -58,6 +58,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     private var rulesJob: kotlinx.coroutines.Job? = null
     private var liveJob: kotlinx.coroutines.Job? = null
     private var lastDetectAt = 0L
+    private var lastDetectLogAt = 0L
     private var lastLimitRecheckAt = 0L
     private var lastBackAt = 0L
     private var lastForeground: String? = null
@@ -201,10 +202,19 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         )
         rulesJob = container.scope.launch {
             container.db.elementRuleDao().observeAll().collect { rules ->
-                enabledRules.value = rules.filter { it.enabled }
+                val active = rules.filter { it.enabled }
                     .groupBy({ it.packageName }, { it.element })
                     .mapValues { (_, keys) -> keys.toSet() }
+                enabledRules.value = active
+                Diag.d("rules ${rules.size} active=${active.mapValues { it.value.size }}")
             }
+        }
+        // Arm the cover fallback the moment a block is enforced. HyperOS drops
+        // background activity starts without throwing, and a static app (a
+        // calculator, a spent session, a loaded page) never sends another
+        // window event — so waiting for one meant no block screen, ever.
+        container.enforcement.onBlockEnforced = { target, reason, until ->
+            ensureBlockCovered(target, reason, until)
         }
         // Live limits and schedules. The enforcement data is Room-backed, so an
         // edit in Settings is already visible to the next decision — but a
@@ -250,7 +260,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                     lastLoggedPkg = pkg
                     Diag.d(
                         "fg $pkg reels=${Reels.appliesTo(pkg)} " +
-                            "rules=${Detectors.appliesTo(pkg)} browser=${pkg in BROWSERS}"
+                            "rules=${Detectors.appliesTo(pkg)} browser=${isBrowser(pkg)}"
                     )
                 }
                 container.enforcement.onForeground(pkg)
@@ -260,7 +270,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 resetAttribution()
                 runDetection(pkg)
                 onReelForeground(pkg)
-                if (pkg in BROWSERS) checkWebsite(e, pkg)
+                if (isBrowser(pkg)) checkWebsite(e, pkg)
                 startLimitWatch(pkg)
                 if (coverPkg != null && coverPkg != pkg) hideBlockCover()
                 ensureBlockCovered(pkg)
@@ -275,7 +285,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 }
                 noteReelSurface(pkg)
                 recheckLimitIfCovered(pkg)
-                if (pkg in BROWSERS) checkWebsite(e, pkg)
+                if (isBrowser(pkg)) checkWebsite(e, pkg)
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
                 if (isVerticalScroll(e)) noteReelScroll(e)
@@ -383,13 +393,17 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
     // --- element blocking ---------------------------------------------------
 
-    private fun canonical(pkg: String): String = when (pkg) {
-        "com.ss.android.ugc.trill" -> "com.zhiliaoapp.musically"
-        "app.revanced.android.youtube", "com.vanced.android.youtube" -> "com.google.android.youtube"
-        "com.facebook.lite" -> "com.facebook.katana"
-        "com.instagram.lite" -> "com.instagram.android"
-        else -> pkg
-    }
+    /**
+     * The catalogue package a repackaged client should be treated as.
+     *
+     * Delegates to [Detectors.canonical] so family matching is shared: a patched
+     * YouTube (Morphe/ReVanced, `app.morphe.android.youtube`) or a repacked
+     * Instagram resolves by name, not by an exact alias list. The old local map
+     * knew four literal package names, so element rules silently never applied
+     * to any other repackaged client — the rule row was stored, enabled, and
+     * then looked up under a key this function could not produce.
+     */
+    private fun canonical(pkg: String): String = Detectors.canonical(pkg)
 
     private fun rulesFor(pkg: String): Set<String> =
         enabledRules.value[pkg] ?: enabledRules.value[canonical(pkg)] ?: emptySet()
@@ -507,14 +521,23 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun ensureBlockCovered(pkg: String) {
+    /**
+     * [reason] is set when a block was just enforced and the caller already
+     * knows why (a website is not an app limit, so re-deriving the decision
+     * would answer "not blocked"). It is null on window events, where the
+     * current decision is the only truth.
+     */
+    private fun ensureBlockCovered(pkg: String, reason: String? = null, untilMs: Long = 0L) {
         mainHandler.postDelayed({
             if (BlockOverlayActivity.visible || blockCoverView != null) return@postDelayed
             val fg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
             if (fg != pkg) return@postDelayed
             container.scope.launch {
-                val decision = runCatching { container.enforcement.decisionFor(pkg) }.getOrNull()
-                    ?: return@launch
+                val decision = if (reason != null) {
+                    EnforcementManager.Decision(blocked = true, reason = reason, availableAtMs = untilMs)
+                } else {
+                    runCatching { container.enforcement.decisionFor(pkg) }.getOrNull()
+                } ?: return@launch
                 Diag.d(
                     "cover check pkg=$pkg blocked=${decision.blocked} " +
                         "screen=${BlockOverlayActivity.visible} reason=${decision.reason}"
@@ -620,6 +643,13 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         val specs = if (keys.isEmpty()) emptyList()
         else Detectors.specsFor(pkg).filter { it.key in keys }
         if (specs.isEmpty()) {
+            if (Detectors.appliesTo(pkg)) {
+                val now = System.currentTimeMillis()
+                if (now - lastDetectLogAt >= DETECT_LOG_MS) {
+                    lastDetectLogAt = now
+                    Diag.d("inapp idle $pkg keys=$keys canonical=${canonical(pkg)}")
+                }
+            }
             hideCover()
             return
         }
@@ -1130,6 +1160,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         private const val ELEM_MAX_CREDIT_MS = 15_000L
         private const val ELEM_MIN_CREDIT_MS = 2_000L
         private const val DETECT_THROTTLE_MS = 400L
+        private const val DETECT_LOG_MS = 5_000L
         private const val BACK_COOLDOWN_MS = 3_000L
         private const val FULLSCREEN_RATIO = 0.55
         /** Smallest matched node that may trigger Back (a nav tab must not). */
@@ -1189,5 +1220,16 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             "com.oneplus.browser",
             "com.zhiliaoapp.musically" // TikTok's in-app browser is a common escape hatch
         )
+
+        /**
+         * Name-based fallback: a browser nobody listed still gets its address
+         * bar read. The list above covers the popular ones, but the promise is
+         * "any browser" — a sideloaded Chromium fork (net.quetta.browser, a
+         * vendor build) never appeared in it and silently escaped blocking.
+         */
+        private val BROWSER_HINTS = listOf("browser", "chromium", "gecko")
+
+        fun isBrowser(pkg: String): Boolean =
+            pkg in BROWSERS || BROWSER_HINTS.any { pkg.contains(it, ignoreCase = true) }
     }
 }

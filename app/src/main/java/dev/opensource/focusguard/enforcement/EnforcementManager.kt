@@ -50,6 +50,22 @@ class EnforcementManager(
     }
 
     /**
+     * Fired immediately after a block screen is launched for [pkg], with the
+     * reason it was blocked and when it lifts.
+     *
+     * Some OEM builds (HyperOS/MIUI) swallow a background activity start
+     * without throwing, so the launch "succeeds" and no window ever appears.
+     * The accessibility service needs to arm its cover fallback at that moment
+     * — not on the next window event, because the app being blocked is usually
+     * static and emits none: a calculator, a spent session, a loaded page.
+     *
+     * The reason is passed in rather than re-derived: a website block is not an
+     * app limit, so asking [decisionFor] about the browser afterwards answers
+     * "not blocked" and the cover never appeared.
+     */
+    var onBlockEnforced: ((pkg: String, reason: String, untilMs: Long) -> Unit)? = null
+
+    /**
      * blocked / remaining time / why. When [autoSession] is set, a SESSION
      * limit has no active grant yet — the caller starts it silently with the
      * limit's fixed length (no prompt; the "how many minutes?" dialog is gone).
@@ -130,6 +146,7 @@ class EnforcementManager(
             logBlock(pkg, decision.reason, now)
             Notifier.onBlockHit(context, pkg, decision.reason)
             BlockOverlayActivity.launch(context, pkg, decision.reason, untilMs = decision.availableAtMs)
+            onBlockEnforced?.invoke(pkg, decision.reason, decision.availableAtMs)
             return decision
         }
 
@@ -289,7 +306,7 @@ class EnforcementManager(
 
     /** Daily decision for website-target limits while a browser is foreground. */
     private suspend fun websiteDecision(browserPkg: String, now: Long): Decision? {
-        if (browserPkg !in FocusGuardAccessibilityService.BROWSERS) return null
+        if (!FocusGuardAccessibilityService.isBrowser(browserPkg)) return null
         var remaining = Long.MAX_VALUE
         var hit = false
         for (limit in websiteDailyLimits()) {
@@ -340,6 +357,7 @@ class EnforcementManager(
         logBlock(domain, BlockOverlayActivity.REASON_WEBSITE, now)
         Notifier.onBlockHit(context, domain, BlockOverlayActivity.REASON_WEBSITE)
         BlockOverlayActivity.launch(context, browserPkg, BlockOverlayActivity.REASON_WEBSITE, domain)
+        onBlockEnforced?.invoke(browserPkg, BlockOverlayActivity.REASON_WEBSITE, 0L)
     }
 
     /** Block-keyword check for extracted page text (called by the accessibility service). */
