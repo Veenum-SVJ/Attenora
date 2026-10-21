@@ -69,9 +69,10 @@ class EnforcementManager(
      *
      * The reason is passed in rather than re-derived: a website block is not an
      * app limit, so asking [decisionFor] about the browser afterwards answers
-     * "not blocked" and the cover never appeared.
+     * "not blocked" and the cover never appeared. [label] carries the blocked
+     * host for website blocks so the cover can name it.
      */
-    var onBlockEnforced: ((pkg: String, reason: String, untilMs: Long) -> Unit)? = null
+    var onBlockEnforced: ((pkg: String, reason: String, untilMs: Long, label: String?) -> Unit)? = null
 
     /**
      * blocked / remaining time / why. When [autoSession] is set, a SESSION
@@ -185,7 +186,7 @@ class EnforcementManager(
             logBlock(pkg, decision.reason, now)
             Notifier.onBlockHit(context, pkg, decision.reason)
             BlockOverlayActivity.launch(context, pkg, decision.reason, untilMs = decision.availableAtMs)
-            onBlockEnforced?.invoke(pkg, decision.reason, decision.availableAtMs)
+            onBlockEnforced?.invoke(pkg, decision.reason, decision.availableAtMs, null)
             return decision
         }
 
@@ -440,7 +441,7 @@ class EnforcementManager(
         logBlock(domain, BlockOverlayActivity.REASON_WEBSITE, now)
         Notifier.onBlockHit(context, domain, BlockOverlayActivity.REASON_WEBSITE)
         BlockOverlayActivity.launch(context, browserPkg, BlockOverlayActivity.REASON_WEBSITE, domain)
-        onBlockEnforced?.invoke(browserPkg, BlockOverlayActivity.REASON_WEBSITE, 0L)
+        onBlockEnforced?.invoke(browserPkg, BlockOverlayActivity.REASON_WEBSITE, 0L, domain)
     }
 
     /** Block-keyword check for extracted page text (called by the accessibility service). */

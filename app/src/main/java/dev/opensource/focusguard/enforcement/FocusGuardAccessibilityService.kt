@@ -213,8 +213,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         // background activity starts without throwing, and a static app (a
         // calculator, a spent session, a loaded page) never sends another
         // window event — so waiting for one meant no block screen, ever.
-        container.enforcement.onBlockEnforced = { target, reason, until ->
-            ensureBlockCovered(target, reason, until)
+        container.enforcement.onBlockEnforced = { target, reason, until, label ->
+            ensureBlockCovered(target, reason, until, label)
         }
         // Live limits and schedules. The enforcement data is Room-backed, so an
         // edit in Settings is already visible to the next decision — but a
@@ -528,7 +528,12 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      * would answer "not blocked"). It is null on window events, where the
      * current decision is the only truth.
      */
-    private fun ensureBlockCovered(pkg: String, reason: String? = null, untilMs: Long = 0L) {
+    private fun ensureBlockCovered(
+        pkg: String,
+        reason: String? = null,
+        untilMs: Long = 0L,
+        label: String? = null
+    ) {
         mainHandler.postDelayed({
             if (BlockOverlayActivity.visible || blockCoverView != null) return@postDelayed
             val fg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
@@ -543,12 +548,16 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                     "cover check pkg=$pkg blocked=${decision.blocked} " +
                         "screen=${BlockOverlayActivity.visible} reason=${decision.reason}"
                 )
-                if (decision.blocked) mainHandler.post { showBlockCover(pkg, decision) }
+                if (decision.blocked) mainHandler.post { showBlockCover(pkg, decision, label) }
             }
         }, BLOCK_FALLBACK_MS)
     }
 
-    private fun showBlockCover(pkg: String, decision: EnforcementManager.Decision) {
+    private fun showBlockCover(
+        pkg: String,
+        decision: EnforcementManager.Decision,
+        label: String? = null
+    ) {
         if (BlockOverlayActivity.visible) return
         hideBlockCover()
         val density = resources.displayMetrics.density
@@ -582,7 +591,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                     "You used this session. Take a break — it opens again on its own."
                 BlockOverlayActivity.REASON_SCHEDULE -> "A focus schedule is active right now."
                 BlockOverlayActivity.REASON_BLOCK_ALL -> "You started a blocking session. Use the time for something better."
-                BlockOverlayActivity.REASON_WEBSITE -> "This site is on your blocklist."
+                BlockOverlayActivity.REASON_WEBSITE ->
+                    label?.let { "$it is on your blocklist." } ?: "This site is on your blocklist."
                 BlockOverlayActivity.REASON_PERMANENT -> "It stays blocked until you remove the limit."
                 else -> "You've reached your limit for today."
             }

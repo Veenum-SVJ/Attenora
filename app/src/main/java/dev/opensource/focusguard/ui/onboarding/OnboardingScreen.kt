@@ -50,6 +50,7 @@ import dev.opensource.focusguard.ui.common.LocalAccentColor
 import dev.opensource.focusguard.ui.common.hasNotificationPermission
 import dev.opensource.focusguard.ui.common.hasUsageAccess
 import dev.opensource.focusguard.ui.common.isAccessibilityServiceEnabled
+import dev.opensource.focusguard.ui.common.openAccessibilitySettings
 import dev.opensource.focusguard.ui.common.requestNotificationPermission
 import dev.opensource.focusguard.ui.icons.FgIcons
 import kotlinx.coroutines.flow.first
@@ -158,7 +159,7 @@ fun OnboardingScreen() {
             confirmButton = {
                 TextButton(onClick = {
                     showDisclosure = false
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    openAccessibilitySettings(context, FocusGuardAccessibilityService::class.java)
                 }) { Text("Continue to settings") }
             },
             dismissButton = {

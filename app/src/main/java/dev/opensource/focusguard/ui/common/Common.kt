@@ -2,7 +2,9 @@ package dev.opensource.focusguard.ui.common
 
 import android.Manifest
 import android.app.AppOpsManager
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Build
@@ -347,6 +349,27 @@ fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boo
     ) ?: return false
     return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
 }
+
+/**
+ * Open the accessibility page for FocusGuard's own service.
+ *
+ * The detail screen exists only as a hidden action ("android.settings.
+ * ACCESSIBILITY_DETAILS_SETTINGS") and stock Android 14 guards it with
+ * OPEN_ACCESSIBILITY_DETAILS_SETTINGS (signature|installer), so a third-party
+ * app gets SecurityException there. Try it anyway — some OEM builds allow it —
+ * and fall back to the service list, which works everywhere.
+ */
+fun openAccessibilitySettings(context: Context, serviceClass: Class<*>) {
+    val detail = Intent(ACCESSIBILITY_DETAILS_ACTION).apply {
+        putExtra(Intent.EXTRA_COMPONENT_NAME, ComponentName(context, serviceClass))
+    }
+    val opened = runCatching { context.startActivity(detail) }.isSuccess
+    if (!opened) {
+        runCatching { context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
+    }
+}
+
+private const val ACCESSIBILITY_DETAILS_ACTION = "android.settings.ACCESSIBILITY_DETAILS_SETTINGS"
 
 fun hasNotificationPermission(context: Context): Boolean =
     Build.VERSION.SDK_INT < 33 ||

@@ -69,6 +69,7 @@ import dev.opensource.focusguard.ui.common.NavRow
 import dev.opensource.focusguard.ui.common.PageHeader
 import dev.opensource.focusguard.ui.common.PermissionRow
 import dev.opensource.focusguard.ui.common.isAccessibilityServiceEnabled
+import dev.opensource.focusguard.ui.common.openAccessibilitySettings
 import dev.opensource.focusguard.ui.common.ToggleRow
 import dev.opensource.focusguard.ui.common.hasNotificationPermission
 import dev.opensource.focusguard.ui.common.requestNotificationPermission
@@ -446,7 +447,7 @@ fun PermissionsScreen(onBack: () -> Unit) {
             }
             FgDivider(inset = 20.dp)
             PermissionRow("FocusGuard accessibility (blocking, websites, in-app)", serviceOn, "Open") {
-                context.startActivity(Intent(AndroidSettings.ACTION_ACCESSIBILITY_SETTINGS))
+                openAccessibilitySettings(context, FocusGuardAccessibilityService::class.java)
             }
             if (android.os.Build.VERSION.SDK_INT >= 33) {
                 FgDivider(inset = 20.dp)

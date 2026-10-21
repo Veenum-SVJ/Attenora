@@ -245,7 +245,13 @@ class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
-            Intent.ACTION_BOOT_COMPLETED, Intent.ACTION_MY_PACKAGE_REPLACED -> Unit
+            // A clock or timezone change moves every wall-clock alarm with it:
+            // a daily reminder set for 21:00 has to stay 21:00 local, not the
+            // instant it was scheduled for. Same re-arm as boot.
+            Intent.ACTION_BOOT_COMPLETED,
+            Intent.ACTION_MY_PACKAGE_REPLACED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED -> Unit
             else -> return
         }
         val container = (context.applicationContext as? FocusApp)?.container ?: return

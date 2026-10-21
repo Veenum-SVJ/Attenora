@@ -54,6 +54,7 @@ import dev.opensource.focusguard.ui.common.PageHeader
 import dev.opensource.focusguard.ui.common.appLabel
 import dev.opensource.focusguard.ui.common.formatDuration
 import dev.opensource.focusguard.ui.common.isAccessibilityServiceEnabled
+import dev.opensource.focusguard.ui.common.openAccessibilitySettings
 import dev.opensource.focusguard.ui.icons.FgIcons
 import dev.opensource.focusguard.ui.limits.rememberChallengeGate
 import dev.opensource.focusguard.ui.theme.FgColors
@@ -161,11 +162,7 @@ fun InAppBlockingScreen() {
                     )
                     if (!serviceOn) {
                         OutlinedButton(onClick = {
-                            runCatching {
-                                context.startActivity(
-                                    android.content.Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                                )
-                            }
+                            openAccessibilitySettings(context, FocusGuardAccessibilityService::class.java)
                         }) { Text("Enable") }
                     }
                 }
