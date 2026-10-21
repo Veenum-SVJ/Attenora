@@ -44,8 +44,17 @@ object Alarms {
             am.cancel(endPi)
             return
         }
-        am.setWindow(AlarmManager.RTC_WAKEUP, nextStartMillis(schedule, System.currentTimeMillis()), WINDOW_MS, pi)
-        am.setWindow(AlarmManager.RTC_WAKEUP, nextEndMillis(schedule, System.currentTimeMillis()), WINDOW_MS, endPi)
+        val now = System.currentTimeMillis()
+        val start = nextStartMillis(schedule, now)
+        val end = nextEndMillis(schedule, now)
+        val ok = runCatching {
+            am.setWindow(AlarmManager.RTC_WAKEUP, start, WINDOW_MS, pi)
+            am.setWindow(AlarmManager.RTC_WAKEUP, end, WINDOW_MS, endPi)
+        }
+        dev.opensource.focusguard.util.Diag.d(
+            "alarm id=${schedule.id} start=$start end=$end in=${start - now}ms ok=${ok.isSuccess} " +
+                "err=${ok.exceptionOrNull()?.javaClass?.simpleName ?: ""}"
+        )
     }
 
     fun setReminderAlarm(context: Context, minuteOfDay: Int) {
@@ -243,7 +252,9 @@ class BootReceiver : BroadcastReceiver() {
         val pending = goAsync()
         container.scope.launch {
             try {
-                Alarms.rearmAll(context, container.enforcement.schedules.value)
+                // Read the table, not the StateFlow: at boot its value is
+                // still the empty seed, so schedules would never be re-armed.
+                Alarms.rearmAll(context, container.db.focusScheduleDao().observeAll().first())
                 Alarms.setReminderAlarm(context, container.settings.reminderMinute.first())
                 Alarms.rearmWeekly(
                     context,
