@@ -252,7 +252,13 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
         val pkg = e.packageName?.toString() ?: return
-        if (pkg == packageName) return
+        if (pkg == packageName) {
+            // FocusGuard is never in the grayscale list, so coming back to our
+            // own UI has to lift a filter a previous app turned on. Everything
+            // else below deliberately ignores self events.
+            applyGrayscale(pkg)
+            return
+        }
 
         when (e.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
