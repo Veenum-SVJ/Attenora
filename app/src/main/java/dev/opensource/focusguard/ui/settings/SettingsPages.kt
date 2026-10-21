@@ -38,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -67,6 +68,7 @@ import dev.opensource.focusguard.ui.common.LocalAppContainer
 import dev.opensource.focusguard.ui.common.NavRow
 import dev.opensource.focusguard.ui.common.PageHeader
 import dev.opensource.focusguard.ui.common.PermissionRow
+import dev.opensource.focusguard.ui.common.isAccessibilityServiceEnabled
 import dev.opensource.focusguard.ui.common.ToggleRow
 import dev.opensource.focusguard.ui.common.hasNotificationPermission
 import dev.opensource.focusguard.ui.common.requestNotificationPermission
@@ -563,6 +565,27 @@ fun WebsiteBlockingScreen(onBack: () -> Unit) {
     val webOn by container.webBlockingActive.collectAsState()
     val sites by container.db.blockedSiteDao().observeAll().collectAsState(initial = emptyList())
 
+    // The switch keeps its value while the service is off, so the subtitle has
+    // to reflect the real state. It used to be a static "needs accessibility"
+    // line, which kept nagging people who had already granted it.
+    var serviceOn by remember {
+        mutableStateOf(
+            isAccessibilityServiceEnabled(context, FocusGuardAccessibilityService::class.java)
+        )
+    }
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                serviceOn = isAccessibilityServiceEnabled(
+                    context, FocusGuardAccessibilityService::class.java
+                )
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     var newSite by rememberSaveable { mutableStateOf("") }
     var siteError by rememberSaveable { mutableStateOf<String?>(null) }
 
@@ -570,7 +593,11 @@ fun WebsiteBlockingScreen(onBack: () -> Unit) {
         FgGroup(Modifier.padding(horizontal = 16.dp)) {
             ToggleRow(
                 title = "Block websites",
-                subtitle = "Needs the FocusGuard accessibility service (see Permissions)",
+                subtitle = if (serviceOn) {
+                    "Blocks these domains in every browser"
+                } else {
+                    "Needs the FocusGuard accessibility service (see Permissions)"
+                },
                 checked = webOn,
                 onCheckedChange = { on -> scope.launch { container.settings.setWebBlocking(on) } }
             )
