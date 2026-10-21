@@ -7,6 +7,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -91,6 +93,7 @@ private data class Range(val from: LocalDate, val to: LocalDate) {
 /** One app rolled up across every day in the selected range. */
 private data class AppStat(val pkg: String, val ms: Long, val launches: Int)
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
     val container = LocalAppContainer.current
@@ -429,33 +432,48 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                     }
 
                     Spacer(Modifier.height(14.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        LegendDot(MaterialTheme.colorScheme.primary, "Mobile App")
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            formatDuration(displayTotal),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Spacer(Modifier.width(16.dp))
-                        LegendDot(MaterialTheme.colorScheme.secondary, "Web")
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            if (webTotal <= 0) "Less than 1 min" else formatDuration(webTotal),
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
+                    // FlowRow, not Row: at 1.3x font the Web value ("Less than
+                    // 1 min") is wider than the leftover space and used to clip
+                    // against the card edge. Each pair now wraps as one unit.
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            LegendDot(MaterialTheme.colorScheme.primary, "Mobile App")
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                formatDuration(displayTotal),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            LegendDot(MaterialTheme.colorScheme.secondary, "Web")
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                if (webTotal <= 0) "Less than 1 min" else formatDuration(webTotal),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
                     }
 
                     // Total and focus share one row — stacked, they read as two
                     // unrelated facts and leave a ragged gap under the legend.
+                    // FlowRow keeps that side-by-side reading but lets the second
+                    // stat drop to its own line when the font is scaled up;
+                    // weight(1f) previously squeezed "24s" into a one-character
+                    // column and pushed "Focused today" off the row entirely.
                     Spacer(Modifier.height(8.dp))
-                    Row(
+                    FlowRow(
                         Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
+                        horizontalArrangement = Arrangement.spacedBy(20.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         StatLine(
-                            modifier = Modifier.weight(1f),
                             icon = FgIcons.Eye,
                             label = "Total usage",
                             value = if (displayTotal <= 0) "0m" else formatDuration(displayTotal)
@@ -470,7 +488,6 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
                                 }
                             }
                             StatLine(
-                                modifier = Modifier.weight(1f),
                                 icon = FgIcons.Stopwatch,
                                 label = "Focused today",
                                 value = if (focusedToday <= 0) "0m"
@@ -660,14 +677,16 @@ private fun StatLine(
         Text(
             "$label:",
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
         )
         Spacer(Modifier.width(6.dp))
         Text(
             value,
             style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary
+            color = MaterialTheme.colorScheme.primary,
+            maxLines = 1
         )
     }
 }
