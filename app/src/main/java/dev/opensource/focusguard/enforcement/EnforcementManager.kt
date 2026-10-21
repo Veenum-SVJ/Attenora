@@ -120,6 +120,10 @@ class EnforcementManager(
         val decision = decisionFor(pkg, now)
 
         if (decision.blocked) {
+            dev.opensource.focusguard.util.Diag.d(
+                "eval $pkg blocked=true reason=${decision.reason} until=${decision.availableAtMs} " +
+                    "screen=${BlockOverlayActivity.visible}"
+            )
             if (BlockOverlayActivity.visible) return decision
             if (now - lastOverlayAt < OVERLAY_THROTTLE_MS) return decision
             lastOverlayAt = now
@@ -143,6 +147,9 @@ class EnforcementManager(
                         targetId = auto.targetId,
                         untilMs = now + auto.minutes * 60_000L
                     )
+                )
+                dev.opensource.focusguard.util.Diag.d(
+                    "session grant ${auto.targetId} minutes=${auto.minutes} cooldown=${auto.cooldownMs} prevUntil=$stored"
                 )
             }
         }

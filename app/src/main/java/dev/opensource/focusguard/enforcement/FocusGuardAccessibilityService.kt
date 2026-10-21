@@ -20,6 +20,7 @@ import dev.opensource.focusguard.domain.Allowlist
 import dev.opensource.focusguard.domain.UrlMatcher
 import dev.opensource.focusguard.ui.blocking.BlockOverlayActivity
 import dev.opensource.focusguard.ui.common.formatDuration
+import dev.opensource.focusguard.util.Diag
 import dev.opensource.focusguard.util.Grayscale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.drop
@@ -102,6 +103,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     // runs out while the app stays open still blocks. One delayed wakeup at a
     // time (never a poll loop); bounded by MAX_WATCH_DELAY_MS.
     private var watchPkg: String? = null
+    private var lastLoggedPkg: String? = null
 
     private val limitWatcher: Runnable = Runnable {
         val pkg = watchPkg ?: return@Runnable
@@ -193,6 +195,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         container.a11yConnected = true
+        Diag.d(
+            "service connected reels=${container.reelCounterOn.value} " +
+                "web=${container.webBlockingActive.value} sdk=${android.os.Build.VERSION.SDK_INT}"
+        )
         rulesJob = container.scope.launch {
             container.db.elementRuleDao().observeAll().collect { rules ->
                 enabledRules.value = rules.filter { it.enabled }
@@ -240,6 +246,13 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
         when (e.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                if (pkg != lastLoggedPkg) {
+                    lastLoggedPkg = pkg
+                    Diag.d(
+                        "fg $pkg reels=${Reels.appliesTo(pkg)} " +
+                            "rules=${Detectors.appliesTo(pkg)} browser=${pkg in BROWSERS}"
+                    )
+                }
                 container.enforcement.onForeground(pkg)
                 lastForeground = pkg
                 updateCountdown(pkg)
@@ -277,14 +290,22 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         if (now - lastCheckAt < MIN_CHECK_INTERVAL_MS) return
         lastCheckAt = now
 
-        val raw = findAddressText() ?: return
-        val host = UrlMatcher.normalizeDomain(raw) ?: return
+        val raw = findAddressText() ?: run {
+            Diag.d("web $pkg no address bar read")
+            return
+        }
+        val host = UrlMatcher.normalizeDomain(raw) ?: run {
+            Diag.d("web $pkg raw=$raw host=null")
+            return
+        }
+        Diag.d("web $pkg raw=$raw host=$host active=${container.webBlockingActive.value}")
 
         attribute(host, now)
 
         if (container.webBlockingActive.value) {
             val hit = UrlMatcher.matches(host, container.blocklist.value)
             if (hit != null) {
+                Diag.d("web $pkg HIT $hit")
                 block(hit, pkg)
                 return
             }
@@ -494,6 +515,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             container.scope.launch {
                 val decision = runCatching { container.enforcement.decisionFor(pkg) }.getOrNull()
                     ?: return@launch
+                Diag.d(
+                    "cover check pkg=$pkg blocked=${decision.blocked} " +
+                        "screen=${BlockOverlayActivity.visible} reason=${decision.reason}"
+                )
                 if (decision.blocked) mainHandler.post { showBlockCover(pkg, decision) }
             }
         }, BLOCK_FALLBACK_MS)
@@ -566,6 +591,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         val added = runCatching {
             getSystemService(WindowManager::class.java).addView(root, params)
         }.isSuccess
+        Diag.d("cover pkg=$pkg reason=${decision.reason} added=$added")
         if (!added) return
         coverPkg = pkg
         blockCoverView = root
@@ -659,12 +685,23 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         // surface itself. Without this, Instagram's persistent "Reels" nav
         // label matched the rule on the home screen, so every content change
         // pressed Back — which reloaded the feed and sometimes left the app.
-        val (primary, bounds) = matched.entries.maxByOrNull {
+        val pair = matched.entries.maxByOrNull {
             it.value.width().toLong() * it.value.height()
         }?.let { it.key to it.value } ?: return
+        val primary = pair.first
+        val bounds = pair.second
         val area = bounds.width().toLong() * bounds.height()
         val coverage = area.toDouble() / screenArea
         val fullscreen = coverage >= FULLSCREEN_RATIO
+        val acted = when (primary.action) {
+            DetectAction.BACK -> coverage >= BACK_MIN_COVERAGE
+            DetectAction.COVER -> coverage >= COVER_MIN_COVERAGE
+            DetectAction.AUTO -> fullscreen || coverage >= COVER_MIN_COVERAGE
+        }
+        Diag.d(
+            "inapp $pkg rule=${primary.key} action=${primary.action} " +
+                "cov=${((coverage * 100).toInt())}% acted=$acted"
+        )
 
         when (primary.action) {
             DetectAction.BACK -> if (coverage >= BACK_MIN_COVERAGE) maybeBack() else hideCover()
@@ -679,9 +716,13 @@ class FocusGuardAccessibilityService : AccessibilityService() {
 
     private fun maybeBack() {
         val now = System.currentTimeMillis()
-        if (now - lastBackAt < BACK_COOLDOWN_MS) return
+        if (now - lastBackAt < BACK_COOLDOWN_MS) {
+            Diag.d("inapp back suppressed cooldown")
+            return
+        }
         lastBackAt = now
         runCatching { performGlobalAction(GLOBAL_ACTION_BACK) }
+        Diag.d("inapp back sent")
     }
 
     private fun matches(node: AccessibilityNodeInfo, spec: ElementSpec): Boolean {
@@ -791,6 +832,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         queue.add(root)
         var visited = 0
         var found = false
+        var via = "none"
+        val wasMarked = reelMarked
         try {
             while (queue.isNotEmpty() && visited < REEL_MAX_NODES) {
                 val node = queue.poll() ?: continue
@@ -810,6 +853,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                         Reels.videoClasses.any { cls.contains(it, ignoreCase = true) }
                     if (named || playingVideo) {
                         found = true
+                        via = if (named) "marker:$id" else "video:${cls.substringAfterLast('.')}"
                         break
                     }
                 }
@@ -831,6 +875,12 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             reelMarked = !definitive &&
                 System.currentTimeMillis() - reelMarkedAt < REEL_MARK_STICKY_MS
         }
+        if (found || reelMarked != wasMarked) {
+            Diag.d(
+                "reel scan $pkg found=$found via=$via marked=$reelMarked " +
+                    "definitive=$definitive nodes=$visited"
+            )
+        }
     }
 
     /**
@@ -840,7 +890,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      */
     private fun noteReelScroll(e: AccessibilityEvent) {
         val pkg = e.packageName?.toString() ?: return
-        if (reelPkg != pkg) return
+        if (reelPkg != pkg) {
+            Diag.d("reel swipe ignored pkg=$pkg feed=$reelPkg")
+            return
+        }
         if (!container.reelCounterOn.value) return
         if (!reelMarked) {
             // The scan runs on a timer while the feed is open, so a swipe can
@@ -856,7 +909,13 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 // the accessibility tree, so a scroll whose source fills the
                 // window is the only reliable signal there. Restricted to apps
                 // whose whole UI is the feed, so an ordinary list cannot count.
-                if (!(Reels.isFeedFirst(pkg) && sourceFillsWindow(e))) return
+                if (!(Reels.isFeedFirst(pkg) && sourceFillsWindow(e))) {
+                    Diag.d(
+                        "reel swipe dropped pkg=$pkg unmarked src=${eventSourceClass(e)} " +
+                            "fills=${sourceFillsWindow(e)} family=${Reels.canonical(pkg)}"
+                    )
+                    return
+                }
                 reelMarked = true
                 reelMarkedAt = System.currentTimeMillis()
             }
@@ -864,6 +923,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
         if (now - lastReelCountAt < REEL_MIN_GAP_MS) return
         lastReelCountAt = now
+        Diag.d("reel +1 $pkg src=${eventSourceClass(e)} fills=${sourceFillsWindow(e)}")
 
         val credit = Reels.creditKey(pkg)
         container.scope.launch {
@@ -876,9 +936,12 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         }
     }
 
+    /** Short class name of the node that produced [e], for the diagnostics log. */
+    private fun eventSourceClass(e: AccessibilityEvent): String =
+        runCatching { e.source?.className?.toString()?.substringAfterLast('.') }.getOrNull() ?: "?"
+
     /** True when the scrolling node itself covers most of the window height. */
-    private fun sourceFillsWindow(e: AccessibilityEvent): Boolean {
-        val src = runCatching { e.source }.getOrNull() ?: return false
+    private fun sourceFillsWindow(e: AccessibilityEvent): Boolean {        val src = runCatching { e.source }.getOrNull() ?: return false
         val rect = Rect()
         runCatching { src.getBoundsInScreen(rect) }
         val screenHeight = resources.displayMetrics.heightPixels

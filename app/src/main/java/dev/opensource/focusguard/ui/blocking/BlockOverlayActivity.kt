@@ -97,7 +97,11 @@ class BlockOverlayActivity : ComponentActivity() {
                 .putExtra(EXTRA_REASON, reason)
                 .putExtra(EXTRA_DOMAIN, domain)
                 .putExtra(EXTRA_UNTIL, untilMs)
-            context.startActivity(intent)
+            val started = runCatching { context.startActivity(intent) }
+            dev.opensource.focusguard.util.Diag.d(
+                "launch pkg=$pkg reason=$reason until=$untilMs " +
+                    (started.exceptionOrNull()?.let { "threw=${it.javaClass.simpleName}:${it.message}" } ?: "ok")
+            )
         }
 
         private fun paramsOf(intent: Intent?) = Params(
