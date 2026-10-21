@@ -1,5 +1,6 @@
 package dev.opensource.focusguard.ui.theme
 
+import android.app.Activity
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -11,13 +12,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
 
 /**
  * "Quiet Instrument" — the v1.2 visual language.
@@ -238,6 +242,20 @@ fun FocusGuardTheme(
         onPrimary = if (darkTheme) Color(0xFF1A1420) else Color.White,
         onPrimaryContainer = accent
     )
+
+    // enableEdgeToEdge() styles the system bars from the *system* dark mode, so
+    // picking Light while the phone is in dark mode left white status-bar icons
+    // on a #F2F2F7 page — unreadable. Tie the bar icon tint to the app's theme.
+    val view = LocalView.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !darkTheme
+                isAppearanceLightNavigationBars = !darkTheme
+            }
+        }
+    }
 
     CompositionLocalProvider(LocalFgSemantic provides semantic) {
         MaterialTheme(
