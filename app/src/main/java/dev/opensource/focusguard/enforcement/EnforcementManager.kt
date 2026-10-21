@@ -43,6 +43,14 @@ class EnforcementManager(
 
     companion object {
         private const val RECONCILE_THROTTLE_MS = 30_000L
+
+        /**
+         * How long a "this daily limit is spent" answer sticks. Usage is
+         * folded in by the reconcile pass up to 30 s later, so without it a
+         * reopen right after the block would read yesterday's total and let
+         * the app through again.
+         */
+        private const val EXHAUSTED_MEMO_MS = 120_000L
         private const val OVERLAY_THROTTLE_MS = 2_500L
         private const val WEBSITE_OVERLAY_THROTTLE_MS = 1_500L
         private const val BLOCK_LOG_THROTTLE_MS = 60_000L
@@ -107,12 +115,43 @@ class EnforcementManager(
     val blockAllUntil: StateFlow<Long> =
         settings.blockAllUntil.stateIn(scope, SharingStarted.Eagerly, 0L)
 
+    /** Hour the usage day rolls over; every "available again" time follows it. */
+    val resetHour: StateFlow<Int> =
+        settings.resetHour.stateIn(scope, SharingStarted.Eagerly, 0)
+
+    /** Next usage-day reset for the configured reset hour. */
+    fun nextResetMs(now: Long = System.currentTimeMillis()): Long {
+        val zone = ZoneId.systemDefault()
+        val date = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        val hours = resetHour.value.coerceIn(0, 23).toLong()
+        val todayReset = date.atStartOfDay(zone).plusHours(hours).toInstant().toEpochMilli()
+        val next = if (todayReset > now) date else date.plusDays(1)
+        return next.atStartOfDay(zone).plusHours(hours).toInstant().toEpochMilli()
+    }
+
+    /** Wall-clock end of a start/end minute window that contains [now]. */
+    fun windowEndMs(endMinute: Int, now: Long = System.currentTimeMillis()): Long {
+        val zone = ZoneId.systemDefault()
+        val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
+        var candidate = today.atStartOfDay(zone).plusMinutes(endMinute.toLong()).toInstant().toEpochMilli()
+        if (candidate <= now) {
+            candidate = today.plusDays(1).atStartOfDay(zone).plusMinutes(endMinute.toLong())
+                .toInstant().toEpochMilli()
+        }
+        return candidate
+    }
+
     @Volatile private var lastReconcileAt = 0L
     @Volatile private var lastOverlayAt = 0L
     @Volatile private var lastBlockLogAt = 0L
 
     /** pkg -> usage-day key we already warned about ("5 minutes left"). */
     private val fiveMinWarned = HashMap<String, String>(8)
+
+    private data class Exhausted(val limitId: Long, val day: String, val at: Long)
+
+    /** pkg -> the daily limit that was just found spent. See [EXHAUSTED_MEMO_MS]. */
+    private val exhausted = HashMap<String, Exhausted>(8)
 
     fun onForeground(pkg: String?) {
         usage.noteForeground(pkg)
@@ -180,15 +219,42 @@ class EnforcementManager(
         if (pkg == context.packageName || Allowlist.isAllowlisted(pkg)) return Decision(blocked = false)
 
         // 1. Block-now.
-        if (blockAllUntil.value > now) return Decision(blocked = true, reason = BlockOverlayActivity.REASON_BLOCK_ALL)
+        if (blockAllUntil.value > now) {
+            return Decision(
+                blocked = true,
+                reason = BlockOverlayActivity.REASON_BLOCK_ALL,
+                availableAtMs = blockAllUntil.value
+            )
+        }
 
         // 2. Focus/sleep schedule (block-all or limited-apps mode).
         val focus = activeScheduleAt(now)
         if (focus != null && focus.blockAll) {
-            return Decision(blocked = true, reason = BlockOverlayActivity.REASON_SCHEDULE)
+            return Decision(
+                blocked = true,
+                reason = BlockOverlayActivity.REASON_SCHEDULE,
+                availableAtMs = windowEndMs(focus.endMinute, now)
+            )
         }
 
         val mon0 = Instant.ofEpochMilli(now).atZone(ZoneId.systemDefault()).dayOfWeek.value - 1
+        val dayKey = ResetEngine.dayKey(now, resetHour.value)
+
+        // A daily limit that was just seen spent stays spent even if the
+        // usage rollup has not caught up yet (see EXHAUSTED_MEMO_MS).
+        exhausted[pkg]?.let { memo ->
+            val limit = limits.value.firstOrNull { it.id == memo.limitId }
+            val stillSpent = limit != null && limit.enabled && limit.type == LimitType.DAILY &&
+                memo.day == dayKey && now - memo.at <= EXHAUSTED_MEMO_MS
+            if (stillSpent) {
+                return Decision(
+                    blocked = true,
+                    reason = BlockOverlayActivity.REASON_LIMIT,
+                    availableAtMs = nextResetMs(now)
+                )
+            }
+            exhausted.remove(pkg)
+        }
 
         // 3+4+5+6. Typed limits that match this package (directly or by category).
         var remaining = Long.MAX_VALUE
@@ -201,7 +267,7 @@ class EnforcementManager(
 
             when (limit.type) {
                 LimitType.PERMANENT ->
-                    return Decision(blocked = true, reason = BlockOverlayActivity.REASON_LIMIT)
+                    return Decision(blocked = true, reason = BlockOverlayActivity.REASON_PERMANENT)
 
                 LimitType.SCHEDULE -> {
                     val prevMon0 = (mon0 + 6) % 7
@@ -211,7 +277,13 @@ class EnforcementManager(
                         ScheduleEngine.daySelected(limit.daysMask, prevMon0),
                         limit.startMinute, limit.endMinute, minuteOfDay
                     )
-                    if (active) return Decision(blocked = true, reason = BlockOverlayActivity.REASON_SCHEDULE)
+                    if (active) {
+                        return Decision(
+                            blocked = true,
+                            reason = BlockOverlayActivity.REASON_SCHEDULE,
+                            availableAtMs = windowEndMs(limit.endMinute, now)
+                        )
+                    }
                 }
 
                 LimitType.DAILY -> {
@@ -221,7 +293,12 @@ class EnforcementManager(
                     val used = usedForLimit(limit, pkg, now)
                     val decision = LimitEngine.dailyDecision(used, limit.dailyLimitMs)
                     if (decision.blocked) {
-                        return Decision(blocked = true, reason = BlockOverlayActivity.REASON_LIMIT)
+                        exhausted[pkg] = Exhausted(limit.id, dayKey, now)
+                        return Decision(
+                            blocked = true,
+                            reason = BlockOverlayActivity.REASON_LIMIT,
+                            availableAtMs = nextResetMs(now)
+                        )
                     }
                     remaining = minOf(remaining, decision.remainingMs)
                 }
@@ -313,7 +390,13 @@ class EnforcementManager(
             val used = usage.websiteMsToday(limit.targetId, now)
             val d = LimitEngine.dailyDecision(used, limit.dailyLimitMs)
             hit = true
-            if (d.blocked) return Decision(blocked = true, reason = BlockOverlayActivity.REASON_WEBSITE)
+            if (d.blocked) {
+                return Decision(
+                    blocked = true,
+                    reason = BlockOverlayActivity.REASON_WEBSITE,
+                    availableAtMs = nextResetMs(now)
+                )
+            }
             remaining = minOf(remaining, d.remainingMs)
         }
         return if (hit) Decision(blocked = false, remainingMs = remaining) else null

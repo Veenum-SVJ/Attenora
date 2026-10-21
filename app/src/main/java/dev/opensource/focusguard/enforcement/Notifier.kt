@@ -67,6 +67,7 @@ object Notifier {
             "schedule" -> "$label is blocked by an active schedule."
             "blockall" -> "$label is blocked during this focus session."
             "cooldown" -> "$label's session is used up — it's on a break."
+            "permanent" -> "$label is blocked until you remove the limit."
             else -> "$label reached its limit."
         }
         post(context, ("block:$target").hashCode(), base(context, CHANNEL_ALERTS)

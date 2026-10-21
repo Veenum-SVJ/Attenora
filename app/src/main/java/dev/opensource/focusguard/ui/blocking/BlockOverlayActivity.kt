@@ -76,6 +76,9 @@ class BlockOverlayActivity : ComponentActivity() {
         const val REASON_WEBSITE = "website"
         const val REASON_COOLDOWN = "cooldown"
 
+        /** Permanent limit: never lifts on its own, so it must not promise a time. */
+        const val REASON_PERMANENT = "permanent"
+
         @Volatile
         var visible = false
             private set
@@ -181,6 +184,7 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
         BlockOverlayActivity.REASON_BLOCK_ALL -> "Focus session"
         BlockOverlayActivity.REASON_SCHEDULE -> "Focus time"
         BlockOverlayActivity.REASON_COOLDOWN -> "Session over"
+        BlockOverlayActivity.REASON_PERMANENT -> "Blocked"
         else -> "Daily limit reached"
     }
     val subtitle = when (reason) {
@@ -189,6 +193,8 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
         BlockOverlayActivity.REASON_SCHEDULE -> "A focus schedule is active right now."
         BlockOverlayActivity.REASON_COOLDOWN ->
             "$label's session is used up. It's taking a break."
+        BlockOverlayActivity.REASON_PERMANENT ->
+            "$label is blocked until you remove the limit."
         else -> "$label has used up its allowed time for today."
     }
 
@@ -199,8 +205,10 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
             BlockOverlayActivity.REASON_SCHEDULE ->
                 container.enforcement.activeScheduleAt(System.currentTimeMillis())
                     ?.let { scheduleEndMillis(it, System.currentTimeMillis()) }
-            BlockOverlayActivity.REASON_WEBSITE -> nextMidnightMillis()
-            else -> nextMidnightMillis()
+            BlockOverlayActivity.REASON_WEBSITE -> container.enforcement.nextResetMs()
+            // Nothing to promise: only the user lifts this one.
+            BlockOverlayActivity.REASON_PERMANENT -> null
+            else -> container.enforcement.nextResetMs()
         }
     }
 
@@ -334,9 +342,6 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
         }
     }
 }
-
-private fun nextMidnightMillis(): Long =
-    LocalDate.now().plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
 private fun scheduleEndMillis(schedule: FocusSchedule, now: Long): Long {
     val zone = ZoneId.systemDefault()

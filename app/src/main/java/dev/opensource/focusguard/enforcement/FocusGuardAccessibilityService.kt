@@ -516,7 +516,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 hideBlockCover()
                 return
             }
-            coverCountdown?.text = if (coverUntil > 0L) clockText(coverUntil) else ""
+            coverCountdown?.text =
+                if (coverUntil > 0L) "Available again at ${clockText(coverUntil)}" else ""
             mainHandler.postDelayed(this, 1_000L)
         }
     }
@@ -568,6 +569,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 BlockOverlayActivity.REASON_SCHEDULE -> "Focus time"
                 BlockOverlayActivity.REASON_BLOCK_ALL -> "Focus session"
                 BlockOverlayActivity.REASON_WEBSITE -> "Site blocked"
+                BlockOverlayActivity.REASON_PERMANENT -> "Blocked"
                 else -> "$app is blocked"
             }
             setTextColor(Color.WHITE)
@@ -581,6 +583,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 BlockOverlayActivity.REASON_SCHEDULE -> "A focus schedule is active right now."
                 BlockOverlayActivity.REASON_BLOCK_ALL -> "You started a blocking session. Use the time for something better."
                 BlockOverlayActivity.REASON_WEBSITE -> "This site is on your blocklist."
+                BlockOverlayActivity.REASON_PERMANENT -> "It stays blocked until you remove the limit."
                 else -> "You've reached your limit for today."
             }
             setTextColor(Color.argb(170, 255, 255, 255))

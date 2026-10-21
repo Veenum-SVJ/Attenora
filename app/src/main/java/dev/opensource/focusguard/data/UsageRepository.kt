@@ -186,7 +186,13 @@ class UsageRepository(
             db.hourlyUsageDao().add(day, pkg, hour, ms)
         }
 
-        db.metaDao().put(MetaEntry(KEY_CURSOR, now.toString()))
+        // Advance only past what was actually accounted for. Leaving a
+        // session open means its RESUME is still the anchor for the PAUSE
+        // that has not arrived yet; moving the cursor to `now` would strand
+        // it and the whole session would never be counted (a one-minute
+        // daily limit could then be reset just by reopening the app).
+        val nextCursor = if (openPkg != null) openAt else now
+        db.metaDao().put(MetaEntry(KEY_CURSOR, nextCursor.toString()))
         db.dailyUsageDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
         db.hourlyUsageDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
         db.reelCountDao().pruneOlderThan(LocalDate.now().minusDays(RETENTION_DAYS).toString())
