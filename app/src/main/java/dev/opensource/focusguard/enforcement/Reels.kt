@@ -51,6 +51,71 @@ object Reels {
      */
     fun isFeedFirst(pkg: String): Boolean = canonical(pkg) == "com.zhiliaoapp.musically"
 
+    /**
+     * Fragments that mean "this surface is a conversation, an inbox or a
+     * comment sheet" — the opposite of a marker.
+     *
+     * A marker alone was not enough. Opening a direct message from a reel, or
+     * the comment sheet over a short, leaves the player in the tree: the scan
+     * still saw a screen-filling video, called the conversation a feed, and
+     * counted swipes there. These fragments are matched against view ids only
+     * (never labels, so an English word on a button cannot trigger them), and
+     * the caller additionally requires the node to be big enough to be a whole
+     * surface. Every one of these apps keeps a "Messages"/"Inbox" *button* on
+     * its feed, which is far too small to pass that gate.
+     */
+    private val chatIds: Map<String, List<String>> = mapOf(
+        "com.google.android.youtube" to listOf(
+            "comment", "bottom_sheet", "engagement_panel"
+        ),
+        "com.instagram.android" to listOf(
+            "direct_", "message_list", "message_thread", "thread_", "inbox",
+            "comment", "notes_tray"
+        ),
+        "com.facebook.katana" to listOf(
+            "message", "inbox", "thread", "comment"
+        ),
+        "com.snapchat.android" to listOf(
+            "chat", "conversation", "message", "send_to", "friend_", "reply"
+        ),
+        "com.zhiliaoapp.musically" to listOf(
+            "inbox", "chat", "im_", "message", "notice", "comment"
+        )
+    )
+
+    /**
+     * Bottom-tab labels that, when the tab reports itself as *selected*, prove
+     * the user is in a chat section rather than the feed. This is the one
+     * signal that survives TikTok's obfuscated ids and Instagram's DM inbox,
+     * and it is checked only on selected nodes — every feed shows an unselected
+     * "Messages" tab, so only the selected one is meaningful.
+     */
+    private val chatTabs = listOf(
+        "inbox", "chats", "chat", "messages", "direct", "friends",
+        "activity", "comments", "replies", "notifications"
+    )
+
+    /** Chat/inbox/comment id fragments for [pkg]; empty for anything else. */
+    fun chatIdsFor(pkg: String): List<String> = chatIds[canonical(pkg)] ?: emptyList()
+
+    /** True when [id] names a conversation, inbox or comment surface of [pkg]. */
+    fun isChatSurfaceId(pkg: String, id: String): Boolean {
+        // Only the id itself, never the package prefix: "com.snapchat.android"
+        // contains "chat" and would exclude every Spotlight reel.
+        val name = id.substringAfterLast('/')
+        if (name.isEmpty()) return false
+        return chatIdsFor(pkg).any { name.contains(it, ignoreCase = true) }
+    }
+
+    /** True when a selected tab labelled [label] means "not the feed". */
+    fun isChatTab(label: String): Boolean {
+        val l = label.trim().lowercase()
+        if (l.isEmpty()) return false
+        return chatTabs.any { tab ->
+            l == tab || l.startsWith("$tab ") || l.startsWith("$tab(") || l.startsWith("$tab,")
+        }
+    }
+
     /** View classes that only appear where a video is actually playing. */
     val videoClasses = listOf("VideoView", "TextureView", "SurfaceView", "PlayerView")
 

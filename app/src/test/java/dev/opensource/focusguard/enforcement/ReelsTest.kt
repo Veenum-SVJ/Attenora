@@ -72,4 +72,103 @@ class ReelsTest {
         // Messenger must not inherit Facebook's reel rules.
         assertEquals("com.facebook.orca", Reels.canonical("com.facebook.orca"))
     }
+
+    @Test
+    fun `conversations and comment sheets are not the feed`() {
+        // A DM opened from a reel, or a comment sheet over a short, keeps the
+        // player in the tree. These ids are the surfaces themselves, not the
+        // small buttons that carry the same words on a feed.
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.instagram.android",
+                "com.instagram.android:id/direct_thread"
+            )
+        )
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.instagram.android",
+                "com.instagram.android:id/message_list"
+            )
+        )
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically:id/inbox_container"
+            )
+        )
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.google.android.youtube",
+                "com.google.android.youtube:id/comments_list"
+            )
+        )
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.snapchat.android",
+                "com.snapchat.android:id/chat_conversation_view"
+            )
+        )
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.facebook.katana",
+                "com.facebook.katana:id/thread_list"
+            )
+        )
+    }
+
+    @Test
+    fun `feed ids are never read as conversations`() {
+        // The gate must not eat a real reel: these are the ids that were
+        // verified on a phone for the four families.
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.instagram.android",
+                "com.instagram.android:id/clips_viewer"
+            )
+        )
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.google.android.youtube",
+                "com.google.android.youtube:id/reel_recycler"
+            )
+        )
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically:id/player_view"
+            )
+        )
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically:id/video_container_area"
+            )
+        )
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.snapchat.android",
+                "com.snapchat.android:id/spotlight_feed_pager"
+            )
+        )
+        assertFalse(Reels.isChatSurfaceId("com.instagram.android", ""))
+        // Nothing to exclude in an app we do not count.
+        assertTrue(Reels.chatIdsFor("com.whatsapp").isEmpty())
+    }
+
+    @Test
+    fun `a selected chat tab means the user left the feed`() {
+        assertTrue(Reels.isChatTab("Inbox"))
+        assertTrue(Reels.isChatTab("inbox (3)"))
+        assertTrue(Reels.isChatTab("Chats"))
+        assertTrue(Reels.isChatTab("Direct"))
+        assertTrue(Reels.isChatTab("Messages"))
+        assertTrue(Reels.isChatTab("Friends"))
+        assertTrue(Reels.isChatTab("Comments"))
+        // The tabs that own the feeds must stay counting.
+        assertFalse(Reels.isChatTab("Home"))
+        assertFalse(Reels.isChatTab("Reels"))
+        assertFalse(Reels.isChatTab("Shorts"))
+        assertFalse(Reels.isChatTab("Spotlight"))
+        assertFalse(Reels.isChatTab(""))
+    }
 }

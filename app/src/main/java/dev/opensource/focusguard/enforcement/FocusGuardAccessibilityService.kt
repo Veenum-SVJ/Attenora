@@ -191,6 +191,14 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     private var lastReelScanAt = 0L
     private var lastReelCountAt = 0L
 
+    /**
+     * Set when a scan sees a conversation/inbox/comment surface. Swipes are
+     * ignored until it passes, so the moment after leaving the feed — before
+     * the next scan — cannot count either. Every scan inside a chat refreshes
+     * it, and chats emit content changes on every swipe, so it holds.
+     */
+    private var reelBlockedUntil = 0L
+
     private val reelFadeOut = Runnable { fadeReelOut() }
 
     override fun onServiceConnected() {
@@ -804,6 +812,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             reelMarked = false
             reelMarkedAt = 0L
             lastReelScanAt = 0L
+            reelBlockedUntil = 0L
             dropReelOverlay()
         }
         if (!Reels.appliesTo(pkg)) {
@@ -851,6 +860,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             reelPkg = pkg
             reelMarked = false
             reelMarkedAt = 0L
+            lastReelScanAt = 0L
+            reelBlockedUntil = 0L
             dropReelOverlay()
         }
         val now = System.currentTimeMillis()
@@ -866,6 +877,11 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      * enough to be the video itself rather than a tab button — Instagram keeps
      * a "Reels" tab on every screen, so a bare label match would count its home
      * feed too. See [Reels].
+     *
+     * The same walk looks for the opposite signal as well, a conversation, an
+     * inbox or a comment sheet, and that one wins: those screens keep the
+     * player in the tree behind them, which is how swipes inside a chat came to
+     * be counted as reels.
      */
     private fun scanReelSurface(pkg: String, definitive: Boolean = false) {
         val markers = Reels.markersFor(pkg)
@@ -875,21 +891,40 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         }
         val root = rootInActiveWindow ?: return
         val dm = resources.displayMetrics
-        val bigEnough = (dm.widthPixels.toLong() * dm.heightPixels * REEL_SURFACE_RATIO).toLong()
+        val windowArea = dm.widthPixels.toLong() * dm.heightPixels
+        val bigEnough = (windowArea * REEL_SURFACE_RATIO).toLong()
+        val chatEnough = (windowArea * REEL_CHAT_RATIO).toLong()
+        val chatIds = Reels.chatIdsFor(pkg)
         val acceptVideoClass = Reels.isFullFeed(pkg)
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         var visited = 0
         var found = false
         var via = "none"
+        var chat = ""
         val wasMarked = reelMarked
         try {
+            // No early exit at the first marker: the video is usually near the
+            // top of the tree and the chat container is often its sibling, so
+            // stopping early would miss the message list behind the player.
             while (queue.isNotEmpty() && visited < REEL_MAX_NODES) {
                 val node = queue.poll() ?: continue
                 visited++
                 val rect = Rect()
                 node.getBoundsInScreen(rect)
-                if (rect.width().toLong() * rect.height() >= bigEnough) {
+                val area = rect.width().toLong() * rect.height()
+                if (node.isSelected) {
+                    val selected = node.text?.toString()
+                        ?: node.contentDescription?.toString() ?: ""
+                    if (Reels.isChatTab(selected)) chat = "tab:$selected"
+                }
+                if (chatIds.isNotEmpty() && area >= chatEnough) {
+                    val id = node.viewIdResourceName ?: ""
+                    if (Reels.isChatSurfaceId(pkg, id)) {
+                        chat = "id:${id.substringAfterLast('/')}"
+                    }
+                }
+                if (!found && area >= bigEnough) {
                     val id = node.viewIdResourceName ?: ""
                     val label = node.text?.toString()
                         ?: node.contentDescription?.toString() ?: ""
@@ -903,7 +938,6 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                     if (named || playingVideo) {
                         found = true
                         via = if (named) "marker:$id" else "video:${cls.substringAfterLast('.')}"
-                        break
                     }
                 }
                 for (i in 0 until node.childCount) {
@@ -913,9 +947,21 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         } catch (_: Exception) {
             return // never crash the accessibility pipeline
         }
+        if (chat.isNotEmpty()) {
+            reelBlockedUntil = System.currentTimeMillis() + REEL_BLOCK_HOLD_MS
+            reelMarked = false
+            reelMarkedAt = 0L
+            if (reelShown) dropReelOverlay()
+            Diag.d("reel scan $pkg chat=$chat marked=false nodes=$visited")
+            return
+        }
         if (found) {
             reelMarked = true
             reelMarkedAt = System.currentTimeMillis()
+            // The feed is on screen now, so any chat-surface block is over —
+            // otherwise the first swipes after coming back from the inbox
+            // would be dropped for the rest of the hold.
+            reelBlockedUntil = 0L
         } else {
             // A feed can scan as empty for a moment mid-page. Keeping the mark
             // for a few seconds stops a swipe in that gap from being lost —
@@ -944,6 +990,23 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             return
         }
         if (!container.reelCounterOn.value) return
+        // A conversation, inbox or comment sheet was seen a moment ago. The
+        // player can still be in the tree behind it, so the mark alone would
+        // say yes; this says no.
+        if (System.currentTimeMillis() < reelBlockedUntil) {
+            Diag.d("reel swipe dropped pkg=$pkg chatSurface")
+            return
+        }
+        // The feed pages the whole window. A half-height comment sheet or a
+        // chat composer does not, so a partial source is never a new reel even
+        // when the player is still visible above it.
+        if (reelMarked && !sourceFillsWindow(e, REEL_MIN_SOURCE_RATIO)) {
+            Diag.d(
+                "reel swipe dropped pkg=$pkg partial src=${eventSourceClass(e)} " +
+                    "fills=${sourceFillsWindow(e)}"
+            )
+            return
+        }
         if (!reelMarked) {
             // The scan runs on a timer while the feed is open, so a swipe can
             // land in the gap between two scans. Look once more at the moment
@@ -952,6 +1015,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             if (scanNow - lastReelScanAt >= REEL_SCAN_INTERVAL_MS) {
                 lastReelScanAt = scanNow
                 scanReelSurface(pkg)
+            }
+            if (System.currentTimeMillis() < reelBlockedUntil) {
+                Diag.d("reel swipe dropped pkg=$pkg chatSurface")
+                return
             }
             if (!reelMarked) {
                 // TikTok has no stable feed id and often omits its player from
@@ -989,12 +1056,13 @@ class FocusGuardAccessibilityService : AccessibilityService() {
     private fun eventSourceClass(e: AccessibilityEvent): String =
         runCatching { e.source?.className?.toString()?.substringAfterLast('.') }.getOrNull() ?: "?"
 
-    /** True when the scrolling node itself covers most of the window height. */
-    private fun sourceFillsWindow(e: AccessibilityEvent): Boolean {        val src = runCatching { e.source }.getOrNull() ?: return false
+    /** True when the scrolling node itself covers [ratio] of the window height. */
+    private fun sourceFillsWindow(e: AccessibilityEvent, ratio: Float = 0.85f): Boolean {
+        val src = runCatching { e.source }.getOrNull() ?: return false
         val rect = Rect()
         runCatching { src.getBoundsInScreen(rect) }
         val screenHeight = resources.displayMetrics.heightPixels
-        return rect.height() >= (screenHeight * 0.85).toInt()
+        return rect.height() >= (screenHeight * ratio).toInt()
     }
 
     /**
@@ -1067,6 +1135,7 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         reelMarked = false
         reelMarkedAt = 0L
         lastReelScanAt = 0L
+        reelBlockedUntil = 0L
         dropReelOverlay()
     }
 
@@ -1203,11 +1272,21 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         private const val REEL_MAX_NODES = 600
         private const val REEL_SCAN_INTERVAL_MS = 2_000L
         /** How long a mark survives a scan that came back empty. */
-        private const val REEL_MARK_STICKY_MS = 5_000L
+        private const val REEL_MARK_STICKY_MS = 3_000L
         /** Smallest gap between the scans triggered by a window change. */
         private const val REEL_NAV_SCAN_GAP_MS = 400L
         private const val REEL_MIN_GAP_MS = 450L
         private const val REEL_SURFACE_RATIO = 0.65
+        /**
+         * Smallest node that can be a conversation/inbox/comment surface. Big
+         * enough to exclude a "Messages" button, small enough to catch a
+         * comment sheet that only covers the lower half.
+         */
+        private const val REEL_CHAT_RATIO = 0.22
+        /** How long a seen chat surface keeps blocking counts. */
+        private const val REEL_BLOCK_HOLD_MS = 3_000L
+        /** A count needs a scroll source covering this much of the window. */
+        private const val REEL_MIN_SOURCE_RATIO = 0.60f
         private const val REEL_HOLD_MS = 2_600L
         private const val REEL_FADE_IN_MS = 180L
         private const val REEL_FADE_OUT_MS = 700L
