@@ -156,6 +156,43 @@ class ReelsTest {
     }
 
     @Test
+    fun `a word inside a longer id is not a chat surface`() {
+        // Found on a phone: TikTok's feed carries "scrim_view" at full size,
+        // and plain substring matching read it as "im" and killed the counter.
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.zhiliaoapp.musically",
+                "com.zhiliaoapp.musically:id/scrim_view"
+            )
+        )
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.snapchat.android",
+                "com.snapchat.android:id/rear_view"
+            )
+        )
+        assertFalse(
+            Reels.isChatSurfaceId(
+                "com.instagram.android",
+                "com.instagram.android:id/commentary_button"
+            )
+        )
+        // The real surfaces still match, with or without a plural.
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.instagram.android",
+                "com.instagram.android:id/direct_thread"
+            )
+        )
+        assertTrue(
+            Reels.isChatSurfaceId(
+                "com.google.android.youtube",
+                "com.google.android.youtube:id/comments_list"
+            )
+        )
+    }
+
+    @Test
     fun `a selected chat tab means the user left the feed`() {
         assertTrue(Reels.isChatTab("Inbox"))
         assertTrue(Reels.isChatTab("inbox (3)"))

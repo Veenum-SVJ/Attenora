@@ -199,6 +199,37 @@ class FocusGuardAccessibilityService : AccessibilityService() {
      */
     private var reelBlockedUntil = 0L
 
+    /**
+     * A swipe is a burst, not an event: one TikTok swipe sends six scroll
+     * events over ~650 ms, so a fixed floor between counts either double-counts
+     * a long burst or has to be so long that two real swipes merge. Instead the
+     * count is committed once the burst has gone quiet for
+     * [REEL_COMMIT_QUIET_MS], which is exactly "one swipe, one reel".
+     */
+    private var reelPendingPkg: String? = null
+    private var reelPendingSrc = ""
+    private val reelCommit = Runnable {
+        val pkg = reelPendingPkg ?: return@Runnable
+        val src = reelPendingSrc
+        reelPendingPkg = null
+        reelPendingSrc = ""
+        if (!reelMarked || !container.reelCounterOn.value) return@Runnable
+        val now = System.currentTimeMillis()
+        if (now - lastReelCountAt < REEL_MIN_GAP_MS) return@Runnable
+        lastReelCountAt = now
+        Diag.d("reel +1 $pkg src=$src")
+
+        val credit = Reels.creditKey(pkg)
+        container.scope.launch {
+            runCatching {
+                val day = container.usage.todayKey()
+                container.db.reelCountDao().add(day, credit, 1)
+                val total = container.db.reelCountDao().totalForDay(day) ?: return@runCatching
+                mainHandler.post { showReelCount(total) }
+            }
+        }
+    }
+
     private val reelFadeOut = Runnable { fadeReelOut() }
 
     override fun onServiceConnected() {
@@ -813,6 +844,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             reelMarkedAt = 0L
             lastReelScanAt = 0L
             reelBlockedUntil = 0L
+            reelPendingPkg = null
+            mainHandler.removeCallbacks(reelCommit)
             dropReelOverlay()
         }
         if (!Reels.appliesTo(pkg)) {
@@ -862,6 +895,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             reelMarkedAt = 0L
             lastReelScanAt = 0L
             reelBlockedUntil = 0L
+            reelPendingPkg = null
+            mainHandler.removeCallbacks(reelCommit)
             dropReelOverlay()
         }
         val now = System.currentTimeMillis()
@@ -902,6 +937,9 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         var found = false
         var via = "none"
         var chat = ""
+        // Only filled on scans that will be logged (a navigation), so the
+        // "why did it not count?" question can be answered from a bug report.
+        val bigOnes = ArrayList<String>(4)
         val wasMarked = reelMarked
         try {
             // No early exit at the first marker: the video is usually near the
@@ -913,6 +951,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 val rect = Rect()
                 node.getBoundsInScreen(rect)
                 val area = rect.width().toLong() * rect.height()
+                if (definitive && bigOnes.size < 4) {
+                    val pct = (area * 100 / windowArea).toInt()
+                    if (pct >= 35) {
+                        bigOnes.add(
+                            (node.viewIdResourceName ?: "").substringAfterLast('/').ifEmpty { "-" } +
+                                "@$pct%:" + (node.className?.toString() ?: "").substringAfterLast('.')
+                        )
+                    }
+                }
                 if (node.isSelected) {
                     val selected = node.text?.toString()
                         ?: node.contentDescription?.toString() ?: ""
@@ -970,10 +1017,10 @@ class FocusGuardAccessibilityService : AccessibilityService() {
             reelMarked = !definitive &&
                 System.currentTimeMillis() - reelMarkedAt < REEL_MARK_STICKY_MS
         }
-        if (found || reelMarked != wasMarked) {
+        if (found || reelMarked != wasMarked || definitive) {
             Diag.d(
                 "reel scan $pkg found=$found via=$via marked=$reelMarked " +
-                    "definitive=$definitive nodes=$visited"
+                    "definitive=$definitive nodes=$visited big=${bigOnes.joinToString(" | ")}"
             )
         }
     }
@@ -1036,20 +1083,12 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 reelMarkedAt = System.currentTimeMillis()
             }
         }
-        val now = System.currentTimeMillis()
-        if (now - lastReelCountAt < REEL_MIN_GAP_MS) return
-        lastReelCountAt = now
-        Diag.d("reel +1 $pkg src=${eventSourceClass(e)} fills=${sourceFillsWindow(e)}")
-
-        val credit = Reels.creditKey(pkg)
-        container.scope.launch {
-            runCatching {
-                val day = container.usage.todayKey()
-                container.db.reelCountDao().add(day, credit, 1)
-                val total = container.db.reelCountDao().totalForDay(day) ?: return@runCatching
-                mainHandler.post { showReelCount(total) }
-            }
-        }
+        // One gesture, one count: a burst of scroll events is committed once it
+        // has been quiet for a moment. See [reelCommit].
+        reelPendingPkg = pkg
+        reelPendingSrc = "${eventSourceClass(e)} fills=${sourceFillsWindow(e)} dy=${e.scrollDeltaY}"
+        mainHandler.removeCallbacks(reelCommit)
+        mainHandler.postDelayed(reelCommit, REEL_COMMIT_QUIET_MS)
     }
 
     /** Short class name of the node that produced [e], for the diagnostics log. */
@@ -1136,6 +1175,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         reelMarkedAt = 0L
         lastReelScanAt = 0L
         reelBlockedUntil = 0L
+        reelPendingPkg = null
+        mainHandler.removeCallbacks(reelCommit)
         dropReelOverlay()
     }
 
@@ -1276,6 +1317,8 @@ class FocusGuardAccessibilityService : AccessibilityService() {
         /** Smallest gap between the scans triggered by a window change. */
         private const val REEL_NAV_SCAN_GAP_MS = 400L
         private const val REEL_MIN_GAP_MS = 450L
+        /** Quiet time that ends a swipe gesture; the count lands after it. */
+        private const val REEL_COMMIT_QUIET_MS = 400L
         private const val REEL_SURFACE_RATIO = 0.65
         /**
          * Smallest node that can be a conversation/inbox/comment surface. Big

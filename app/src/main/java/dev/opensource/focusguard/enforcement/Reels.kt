@@ -66,20 +66,23 @@ object Reels {
      */
     private val chatIds: Map<String, List<String>> = mapOf(
         "com.google.android.youtube" to listOf(
-            "comment", "bottom_sheet", "engagement_panel"
+            "comment", "comments", "bottom_sheet", "engagement_panel"
         ),
         "com.instagram.android" to listOf(
-            "direct_", "message_list", "message_thread", "thread_", "inbox",
-            "comment", "notes_tray"
+            "direct", "message_list", "message_thread", "thread", "threads",
+            "inbox", "comment", "comments", "notes_tray"
         ),
         "com.facebook.katana" to listOf(
-            "message", "inbox", "thread", "comment"
+            "message", "messages", "inbox", "thread", "threads",
+            "comment", "comments"
         ),
         "com.snapchat.android" to listOf(
-            "chat", "conversation", "message", "send_to", "friend_", "reply"
+            "chat", "chats", "conversation", "conversations", "message",
+            "messages", "send_to", "friend", "friends", "reply", "replies"
         ),
         "com.zhiliaoapp.musically" to listOf(
-            "inbox", "chat", "im_", "message", "notice", "comment"
+            "inbox", "im", "chat", "chats", "message", "messages",
+            "notice", "notices", "comment", "comments"
         )
     )
 
@@ -102,9 +105,28 @@ object Reels {
     fun isChatSurfaceId(pkg: String, id: String): Boolean {
         // Only the id itself, never the package prefix: "com.snapchat.android"
         // contains "chat" and would exclude every Spotlight reel.
-        val name = id.substringAfterLast('/')
+        val name = id.substringAfterLast('/').lowercase()
         if (name.isEmpty()) return false
-        return chatIdsFor(pkg).any { name.contains(it, ignoreCase = true) }
+        return chatIdsFor(pkg).any { containsToken(name, it) }
+    }
+
+    /**
+     * True when [token] appears in [name] as a whole id segment, so "scrim_view"
+     * is not "im" and "player_view" is not "chat". Plain substring matching let
+     * TikTok's feed scrim be read as a conversation and stopped the counter
+     * dead — the one thing a false positive must never do.
+     */
+    private fun containsToken(name: String, token: String): Boolean {
+        if (token.isEmpty()) return false
+        var i = name.indexOf(token)
+        while (i >= 0) {
+            val before = i == 0 || name[i - 1] == '_' || name[i - 1] == '.'
+            val end = i + token.length
+            val after = end == name.length || name[end] == '_' || name[end] == '.'
+            if (before && after) return true
+            i = name.indexOf(token, i + 1)
+        }
+        return false
     }
 
     /** True when a selected tab labelled [label] means "not the feed". */
