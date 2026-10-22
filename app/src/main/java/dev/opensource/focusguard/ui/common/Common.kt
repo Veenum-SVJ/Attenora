@@ -158,8 +158,15 @@ fun appIconBitmap(context: Context, pkg: String): android.graphics.Bitmap? {
         // run a Lite build or a patched client — a different package with its
         // own icon. Without the fallback those installs show as a letter tile
         // even though the app is right there on the phone.
-        val candidates = listOf(pkg) + Reels.alternates(pkg)
-        candidates.firstNotNullOfOrNull { candidate ->
+        //
+        // The fixed alias list cannot know every patch name (a Morphe YouTube
+        // is "app.morphe.android.youtube"), so anything installed that maps to
+        // the same canonical package is tried as well. Same rule the detector
+        // already uses, just asked of PackageManager.
+        val canonical = Reels.canonical(pkg)
+        val candidates = listOf(pkg) + Reels.alternates(pkg) +
+            installedPackages(context).filter { Reels.canonical(it) == canonical }
+        candidates.distinct().firstNotNullOfOrNull { candidate ->
             runCatching {
                 val bitmap = context.packageManager.getApplicationIcon(candidate).toBitmap()
                 // Some apps hand back a drawable with no intrinsic size, which
@@ -170,6 +177,15 @@ fun appIconBitmap(context: Context, pkg: String): android.graphics.Bitmap? {
         }
     }
 }
+
+/** Installed package names, listed once per process (the icon cache holds the
+ *  result anyway, and PackageManager is the expensive part). */
+private var installedNames: List<String>? = null
+
+private fun installedPackages(context: Context): List<String> =
+    installedNames ?: runCatching {
+        context.packageManager.getInstalledPackages(0).map { it.packageName }
+    }.getOrDefault(emptyList()).also { installedNames = it }
 
 @Composable
 fun AppIcon(packageName: String, size: Dp = 36.dp, modifier: Modifier = Modifier) {

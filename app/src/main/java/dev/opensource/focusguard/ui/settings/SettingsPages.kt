@@ -50,10 +50,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import dev.opensource.focusguard.data.BlockedSite
 import dev.opensource.focusguard.data.ChallengeMode
 import dev.opensource.focusguard.data.SettingsRepository
@@ -61,6 +64,7 @@ import dev.opensource.focusguard.data.ThemeMode
 import dev.opensource.focusguard.enforcement.Alarms
 import dev.opensource.focusguard.enforcement.FocusGuardAccessibilityService
 import dev.opensource.focusguard.security.PinManager
+import dev.opensource.focusguard.util.Grayscale
 import dev.opensource.focusguard.ui.common.FgDivider
 import dev.opensource.focusguard.ui.common.FgGroup
 import dev.opensource.focusguard.ui.common.FgIcon
@@ -513,6 +517,23 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
 @Composable
 fun FocusToolsScreen(onBack: () -> Unit) {
     var page by rememberSaveable { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+
+    // The grayscale row used to keep saying "Needs one adb grant" after the
+    // grant existed, which reads like the feature is still broken. Ask the
+    // permission instead, and re-ask on resume (the grant arrives from a
+    // computer while the app is in the background).
+    var grayscaleReady by remember { mutableStateOf(Grayscale.hasPermission(context)) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                grayscaleReady = Grayscale.hasPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     BackHandler(enabled = page != null) { page = null }
 
@@ -533,8 +554,12 @@ fun FocusToolsScreen(onBack: () -> Unit) {
             FgDivider(inset = RowInset)
             NavRow(
                 title = "Grayscale apps",
-                subtitle = "Open selected apps in black & white. Needs one adb grant — " +
-                    "the command is inside",
+                subtitle = if (grayscaleReady) {
+                    "Open selected apps in black & white"
+                } else {
+                    "Open selected apps in black & white. Needs one adb grant — " +
+                        "the command is inside"
+                },
                 icon = FgIcons.Eye,
                 onClick = { page = "grayscale" }
             )

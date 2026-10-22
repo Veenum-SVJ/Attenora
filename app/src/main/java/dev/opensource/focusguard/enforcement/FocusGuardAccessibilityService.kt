@@ -965,7 +965,11 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                         ?: node.contentDescription?.toString() ?: ""
                     if (Reels.isChatTab(selected)) chat = "tab:$selected"
                 }
-                if (chatIds.isNotEmpty() && area >= chatEnough) {
+                // Only a conversation that is actually on screen counts. YouTube
+                // keeps its engagement panel (the comment sheet) laid out at
+                // full height while it is closed, which read as "chat" on the
+                // first scan of a Short and dropped the overlay for no reason.
+                if (chatIds.isNotEmpty() && area >= chatEnough && node.isVisibleToUser) {
                     val id = node.viewIdResourceName ?: ""
                     if (Reels.isChatSurfaceId(pkg, id)) {
                         chat = "id:${id.substringAfterLast('/')}"
@@ -1082,6 +1086,15 @@ class FocusGuardAccessibilityService : AccessibilityService() {
                 reelMarked = true
                 reelMarkedAt = System.currentTimeMillis()
             }
+        }
+        // A scroll event that reports no movement is not a swipe. YouTube's
+        // pager emits them while a Short is laid out, so opening one was
+        // counted twice before the screen was even touched. Only a real delta
+        // can start a burst; a still event may still extend one that is
+        // already running (later events of a fling often report zero).
+        if (e.scrollDeltaY == 0 && e.scrollDeltaX == 0 && reelPendingPkg == null) {
+            Diag.d("reel swipe ignored pkg=$pkg still")
+            return
         }
         // One gesture, one count: a burst of scroll events is committed once it
         // has been quiet for a moment. See [reelCommit].

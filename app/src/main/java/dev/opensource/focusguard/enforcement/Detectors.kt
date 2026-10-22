@@ -74,9 +74,6 @@ object Detectors {
             ElementUi(whatsapp, "status", "Status", "stories"),
             ElementUi(whatsapp, "channels", "Channels", "channels"),
             ElementUi(whatsapp, "meta_ai", "Meta AI", "ai")
-        ),
-        messenger to listOf(
-            ElementUi(messenger, "meta_ai", "Meta AI", "ai")
         )
     )
 
@@ -114,9 +111,6 @@ object Detectors {
         whatsapp to listOf(
             ElementSpec("status", texts = listOf("status"), ids = listOf("status"), action = DetectAction.AUTO),
             ElementSpec("channels", texts = listOf("channels"), ids = listOf("channel"), action = DetectAction.AUTO),
-            ElementSpec("meta_ai", texts = listOf("meta ai"), ids = listOf("meta_ai", "ai_chat"), action = DetectAction.AUTO)
-        ),
-        messenger to listOf(
             ElementSpec("meta_ai", texts = listOf("meta ai"), ids = listOf("meta_ai", "ai_chat"), action = DetectAction.AUTO)
         )
     )
