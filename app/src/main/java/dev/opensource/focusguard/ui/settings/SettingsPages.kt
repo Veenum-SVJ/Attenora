@@ -64,6 +64,7 @@ import dev.opensource.focusguard.data.ThemeMode
 import dev.opensource.focusguard.enforcement.Alarms
 import dev.opensource.focusguard.enforcement.FocusGuardAccessibilityService
 import dev.opensource.focusguard.security.PinManager
+import dev.opensource.focusguard.ui.limits.rememberChallengeGate
 import dev.opensource.focusguard.util.Grayscale
 import dev.opensource.focusguard.ui.common.FgDivider
 import dev.opensource.focusguard.ui.common.FgGroup
@@ -214,6 +215,11 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     val pinHash by container.settings.pinHash.collectAsState(initial = "")
     val hasPin = pinHash != null && pinHash != ""
 
+    // Turning protection off, or swapping it for something easier, is itself a
+    // protection change: whoever is holding the phone must pass whatever is set
+    // right now, or the gate below is a two-tap formality.
+    val gate = rememberChallengeGate()
+
     var showHourPicker by remember { mutableStateOf(false) }
     var showPinDialog by remember { mutableStateOf(false) }
     var showRemovePinConfirm by remember { mutableStateOf(false) }
@@ -275,32 +281,44 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     ChoicePill("Off", !modeActive) {
-                        scope.launch { container.settings.setChallengeMode(ChallengeMode.NONE) }
+                        gate.request {
+                            scope.launch { container.settings.setChallengeMode(ChallengeMode.NONE) }
+                        }
                     }
                     ChoicePill("PIN", challengeMode == ChallengeMode.PIN) {
                         if (hasPin) {
-                            scope.launch { container.settings.setChallengeMode(ChallengeMode.PIN) }
+                            gate.request {
+                                scope.launch {
+                                    container.settings.setChallengeMode(ChallengeMode.PIN)
+                                }
+                            }
                         } else {
-                            pinRequested = true
-                            showPinDialog = true
+                            gate.request {
+                                pinRequested = true
+                                showPinDialog = true
+                            }
                         }
                     }
                     ChoicePill(
                         "Math challenge",
                         challengeMode == ChallengeMode.CHALLENGE && challengeType == "math"
                     ) {
-                        scope.launch {
-                            container.settings.setChallengeMode(ChallengeMode.CHALLENGE)
-                            container.settings.setChallengeType("math")
+                        gate.request {
+                            scope.launch {
+                                container.settings.setChallengeMode(ChallengeMode.CHALLENGE)
+                                container.settings.setChallengeType("math")
+                            }
                         }
                     }
                     ChoicePill(
                         "Type the quote",
                         challengeMode == ChallengeMode.CHALLENGE && challengeType != "math"
                     ) {
-                        scope.launch {
-                            container.settings.setChallengeMode(ChallengeMode.CHALLENGE)
-                            container.settings.setChallengeType("quote")
+                        gate.request {
+                            scope.launch {
+                                container.settings.setChallengeMode(ChallengeMode.CHALLENGE)
+                                container.settings.setChallengeType("quote")
+                            }
                         }
                     }
                 }
@@ -340,12 +358,12 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                     OutlinedButton(onClick = { showPinDialog = true }) { Text("Set PIN") }
                 }
             } else {
-                NavRow("Change PIN", { showPinDialog = true }, value = "Set")
+                NavRow("Change PIN", { gate.request { showPinDialog = true } }, value = "Set")
                 FgDivider(inset = 20.dp)
                 NavRow(
                     title = "Remove PIN",
                     subtitle = "Limits will no longer be protected",
-                    onClick = { showRemovePinConfirm = true }
+                    onClick = { gate.request { showRemovePinConfirm = true } }
                 )
             }
         }
