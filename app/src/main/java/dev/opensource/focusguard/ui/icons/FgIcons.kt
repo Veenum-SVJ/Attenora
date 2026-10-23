@@ -180,14 +180,23 @@ object FgIcons {
         moveTo(10f, 19f); arcTo(2f, 2f, 0f, false, false, 14f, 19f)
     }
 
-    /** Settings: sliders. */
-    val Sliders = strokes("sliders") {
-        moveTo(3f, 7f); lineTo(21f, 7f)
-        moveTo(3f, 12f); lineTo(21f, 12f)
-        moveTo(3f, 17f); lineTo(21f, 17f)
-        circle(9f, 7f, 2.2f)
-        circle(15f, 12f, 2.2f)
-        circle(8f, 17f, 2.2f)
+    /**
+     * Settings: a cog — hub ring, body ring, eight teeth. Drawn as circles plus
+     * radial strokes so it keeps the same round-capped language as every other
+     * icon here rather than borrowing the Material gear silhouette.
+     */
+    val Gear = strokes("gear") {
+        circle(12f, 12f, 2.4f)
+        circle(12f, 12f, 6.1f)
+        // Teeth at 45-degree steps, from the ring outwards.
+        moveTo(18.1f, 12f); lineTo(20.7f, 12f)
+        moveTo(5.9f, 12f); lineTo(3.3f, 12f)
+        moveTo(12f, 5.9f); lineTo(12f, 3.3f)
+        moveTo(12f, 18.1f); lineTo(12f, 20.7f)
+        moveTo(16.32f, 7.68f); lineTo(18.18f, 5.82f)
+        moveTo(7.68f, 7.68f); lineTo(5.82f, 5.82f)
+        moveTo(16.32f, 16.32f); lineTo(18.18f, 18.18f)
+        moveTo(7.68f, 16.32f); lineTo(5.82f, 18.18f)
     }
 
     /** Categories: shapes (triangle, circle, square). */

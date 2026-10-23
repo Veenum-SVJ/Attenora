@@ -115,7 +115,7 @@ fun FocusGuardApp() {
         DrawerItem("Home", FgIcons.Home) { scope.launch { drawerState.close() }; goTo(0) },
         DrawerItem("Usage Limits", FgIcons.Gauge) { scope.launch { drawerState.close() }; goTo(1) },
         DrawerItem("In-App Blocking", FgIcons.Grid) { scope.launch { drawerState.close() }; goTo(2) },
-        DrawerItem("Settings", FgIcons.Sliders) { scope.launch { drawerState.close() }; push(Pushed.Settings) }
+        DrawerItem("Settings", FgIcons.Gear) { scope.launch { drawerState.close() }; push(Pushed.Settings) }
     )
 
     ModalNavigationDrawer(

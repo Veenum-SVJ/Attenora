@@ -32,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.opensource.focusguard.data.SettingsRepository
 import dev.opensource.focusguard.enforcement.Alarms
@@ -85,6 +86,7 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
     }
 
     var timeTarget by remember { mutableStateOf<String?>(null) } // which time row is picking
+    var dayTarget by remember { mutableStateOf(false) } // weekly summary day
 
     LaunchedEffect(Unit) {
         if (!notifPermission) {
@@ -163,6 +165,7 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
                     icon = FgIcons.Calendar,
                     on = weeklyOn,
                     onChangeTime = { timeTarget = "weekly" },
+                    onChangeDay = { dayTarget = true },
                     onToggle = { on ->
                         scope.launch {
                             settings.setWeekly(on, weeklyDay, weeklyMinute)
@@ -254,6 +257,20 @@ fun UsageNotificationsScreen(onBack: () -> Unit) {
             onDismiss = { timeTarget = null }
         )
     }
+
+    // Weekly summary day picker.
+    if (dayTarget) {
+        DayPickerDialog(
+            onPick = { day ->
+                scope.launch {
+                    settings.setWeekly(weeklyOn, day, weeklyMinute)
+                    Alarms.rearmWeekly(context, weeklyOn, day, weeklyMinute)
+                }
+                dayTarget = false
+            },
+            onDismiss = { dayTarget = false }
+        )
+    }
 }
 
 private fun muteListenerConnected(context: android.content.Context): Boolean =
@@ -284,7 +301,8 @@ private fun TimeToggleRow(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     on: Boolean,
     onChangeTime: () -> Unit,
-    onToggle: (Boolean) -> Unit
+    onToggle: (Boolean) -> Unit,
+    onChangeDay: (() -> Unit)? = null
 ) {
     Column {
         ToggleRow(
@@ -303,9 +321,44 @@ private fun TimeToggleRow(
                 TextButton(onClick = onChangeTime) {
                     Text("Change time", color = MaterialTheme.colorScheme.primary)
                 }
+                if (onChangeDay != null) {
+                    TextButton(onClick = onChangeDay) {
+                        Text("Change day", color = MaterialTheme.colorScheme.primary)
+                    }
+                }
             }
         }
     }
+}
+
+/** Which weekday the summary lands on; Monday 0 .. Sunday 6, matching Alarms. */
+@Composable
+private fun DayPickerDialog(onPick: (Int) -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Day of week") },
+        text = {
+            Column {
+                listOf("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+                    .forEachIndexed { index, name ->
+                        TextButton(
+                            onClick = { onPick(index) },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                name,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                textAlign = TextAlign.Start
+                            )
+                        }
+                    }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
