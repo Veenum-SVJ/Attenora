@@ -360,12 +360,21 @@ fun hasUsageAccess(context: Context): Boolean {
 }
 
 fun isAccessibilityServiceEnabled(context: Context, serviceClass: Class<*>): Boolean {
-    val expected = "${context.packageName}/${serviceClass.name}"
     val enabled = Settings.Secure.getString(
         context.contentResolver,
         Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
     ) ?: return false
-    return enabled.split(':').any { it.equals(expected, ignoreCase = true) }
+    // Android owns this setting and rewrites it in either form: the full
+    // "pkg/a.b.Service" or the shortened "pkg/.b.Service". It re-serialises the
+    // list whenever any accessibility service is toggled, so a service that is
+    // plainly enabled can come back shortened. Compare both, or the app tells
+    // people their granted permission is missing.
+    val component = ComponentName(context, serviceClass)
+    val full = component.flattenToString()
+    val short = component.flattenToShortString()
+    return enabled.split(':').any {
+        it.equals(full, ignoreCase = true) || it.equals(short, ignoreCase = true)
+    }
 }
 
 /**
