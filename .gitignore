@@ -19,3 +19,6 @@ keystore.properties
 test-report/
 /docs/assets/
 .opencode/
+keystore/
+*.jks
+*.keystore
