@@ -51,12 +51,12 @@ enum class ChartStyle { BAR, LINE, DONUT, HEATMAP }
 
 /** Shared slice palette for the donut (assigned by package-name hash). */
 val ChartSliceColors = listOf(
-    Color(0xFF7C6BF2), // lavender accent
-    Color(0xFF34C77B),
-    Color(0xFFF2A65A),
-    Color(0xFF4FA3E3),
-    Color(0xFFE36A8A),
-    Color(0xFF67C7C2)
+    Color(0xFF5FA7A1), // brand teal
+    Color(0xFF6FBF9B),
+    Color(0xFFC9A66B),
+    Color(0xFF6FA8C4),
+    Color(0xFFB07C88),
+    Color(0xFF9AA58E)
 )
 
 fun sliceColorFor(key: String): Color =

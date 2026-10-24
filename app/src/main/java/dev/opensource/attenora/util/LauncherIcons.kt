@@ -19,10 +19,10 @@ object LauncherIcons {
      */
     private val aliases = listOf(
         "dev.opensource.attenora.ui.LauncherDefault",
-        "dev.opensource.attenora.ui.LauncherSky",
+        "dev.opensource.attenora.ui.LauncherMist",
+        "dev.opensource.attenora.ui.LauncherSlate",
+        "dev.opensource.attenora.ui.LauncherIvory",
         "dev.opensource.attenora.ui.LauncherMint",
-        "dev.opensource.attenora.ui.LauncherAmber",
-        "dev.opensource.attenora.ui.LauncherRose",
         "dev.opensource.attenora.ui.LauncherMono"
     )
 

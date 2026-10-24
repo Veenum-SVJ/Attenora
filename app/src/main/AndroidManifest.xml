@@ -48,7 +48,7 @@
             </intent-filter>
         </activity-alias>
         <activity-alias
-            android:name=".ui.LauncherMint"
+            android:name=".ui.LauncherMist"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_1"
@@ -59,7 +59,7 @@
             </intent-filter>
         </activity-alias>
         <activity-alias
-            android:name=".ui.LauncherRose"
+            android:name=".ui.LauncherSlate"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_2"
@@ -70,7 +70,7 @@
             </intent-filter>
         </activity-alias>
         <activity-alias
-            android:name=".ui.LauncherAmber"
+            android:name=".ui.LauncherIvory"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_3"
@@ -81,7 +81,7 @@
             </intent-filter>
         </activity-alias>
         <activity-alias
-            android:name=".ui.LauncherSky"
+            android:name=".ui.LauncherMint"
             android:enabled="false"
             android:exported="true"
             android:icon="@mipmap/ic_launcher_4"

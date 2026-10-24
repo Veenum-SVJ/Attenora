@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,8 +21,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -49,6 +52,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
@@ -80,7 +85,9 @@ import dev.opensource.attenora.ui.common.hasNotificationPermission
 import dev.opensource.attenora.ui.common.requestNotificationPermission
 import dev.opensource.attenora.ui.icons.FgIcons
 import dev.opensource.attenora.ui.notifications.UsageNotificationsScreen
+import dev.opensource.attenora.ui.theme.FgColors
 import dev.opensource.attenora.ui.theme.fg
+import dev.opensource.attenora.util.LauncherIcons
 import dev.opensource.attenora.util.exportCsv
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -520,6 +527,78 @@ fun ThemeSettingsScreen(onBack: () -> Unit) {
                     ).forEach { (mode, label) ->
                         ChoicePill(label, mode == themeMode) {
                             scope.launch { container.settings.setThemeMode(mode) }
+                        }
+                    }
+                }
+            }
+        }
+
+        // One accent, six options, all from the brand palette. The picked index
+        // also selects the matching home-screen icon (see LauncherIcons), which
+        // is why both are written together.
+        SectionLabel("Accent")
+        FgGroup(Modifier.padding(horizontal = 16.dp)) {
+            val context = LocalContext.current
+            val accentIndex by container.settings.iconAccent.collectAsState(initial = 0)
+            Column(Modifier.padding(20.dp)) {
+                Text(
+                    "One accent, drawn from the Attenora palette. It sets the app " +
+                        "tint and the home-screen icon together.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(16.dp))
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    FgColors.AccentNames.forEachIndexed { index, name ->
+                        val swatch = FgColors.AccentChoices[index].first
+                        val selected = index == accentIndex
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Box(
+                                Modifier
+                                    .size(40.dp)
+                                    .clip(CircleShape)
+                                    .background(swatch)
+                                    .then(
+                                        if (selected) {
+                                            Modifier.border(
+                                                2.dp,
+                                                MaterialTheme.colorScheme.onBackground,
+                                                CircleShape
+                                            )
+                                        } else {
+                                            Modifier
+                                        }
+                                    )
+                                    .clickable {
+                                        scope.launch {
+                                            container.settings.setIconAccent(index)
+                                            LauncherIcons.apply(context, index)
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (selected) {
+                                    FgIcon(
+                                        FgIcons.Check,
+                                        null,
+                                        size = 18.dp,
+                                        tint = if (swatch.luminance() > 0.5f) Color.Black else Color.White
+                                    )
+                                }
+                            }
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                name,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (selected) {
+                                    MaterialTheme.colorScheme.onBackground
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
+                            )
                         }
                     }
                 }
