@@ -8,11 +8,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.opensource.focusguard"
+    namespace = "dev.opensource.attenora"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "dev.opensource.focusguard"
+        applicationId = "dev.opensource.attenora"
         minSdk = 26
         targetSdk = 35
         versionCode = 3

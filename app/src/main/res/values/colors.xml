@@ -1,10 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#0E0E16</color>
-    <color name="ic_launcher_background_1">#0B1512</color>
-    <color name="ic_launcher_background_2">#190B0C</color>
-    <color name="ic_launcher_background_3">#1A1309</color>
-    <color name="ic_launcher_background_4">#0C141E</color>
-    <color name="ic_launcher_background_5">#17151C</color>
+    <!-- Launcher squares from the Attenora palette: ivory tiles, one slate,
+         one near-black for Mono. -->
+    <color name="ic_launcher_background">#F9FAF8</color>
+    <color name="ic_launcher_background_1">#F9FAF8</color>
+    <color name="ic_launcher_background_2">#F9FAF8</color>
+    <color name="ic_launcher_background_3">#2F3E44</color>
+    <color name="ic_launcher_background_4">#F9FAF8</color>
+    <color name="ic_launcher_background_5">#14181B</color>
     <color name="block_background">#0E1116</color>
 </resources>

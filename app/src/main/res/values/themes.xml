@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.FocusGuard.Block" parent="@android:style/Theme.DeviceDefault.NoActionBar">
+    <style name="Theme.Attenora.Block" parent="@android:style/Theme.DeviceDefault.NoActionBar">
         <item name="android:windowBackground">@color/block_background</item>
         <item name="android:statusBarColor">@color/block_background</item>
         <item name="android:navigationBarColor">@color/block_background</item>

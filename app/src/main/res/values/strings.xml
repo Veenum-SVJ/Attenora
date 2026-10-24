@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FocusGuard</string>
+    <string name="app_name">Attenora</string>
 
-    <string name="a11y_focusguard_label">FocusGuard</string>
-    <string name="a11y_focusguard_desc">Lets FocusGuard notice which app is open so it can count screen time and show the blocking screen when you hit a limit. It also checks your browser address bar for website blocking, and — only for apps you opt into — hides the parts you chose (for example Shorts or Reels). It reads nothing from keyboards or passwords and stores nothing on the network.</string>
+    <string name="a11y_attenora_label">Attenora</string>
+    <string name="a11y_attenora_desc">Lets Attenora notice which app is open so it can count screen time and show the blocking screen when you hit a limit. It also checks your browser address bar for website blocking, and — only for apps you opt into — hides the parts you chose (for example Shorts or Reels). It reads nothing from keyboards or passwords and stores nothing on the network.</string>
 
-    <string name="mute_listener_label">FocusGuard block notifications</string>
+    <string name="mute_listener_label">Attenora block notifications</string>
 </resources>

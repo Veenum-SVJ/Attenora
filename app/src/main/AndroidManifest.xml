@@ -11,14 +11,14 @@
         android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Grayscale filter: granted once via `adb shell pm grant …` (Settings → Grayscale). -->
+    <!-- Grayscale filter: granted once via `adb shell pm grant â€¦` (Settings â†’ Grayscale). -->
     <uses-permission
         android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
-        android:name=".FocusApp"
+        android:name=".AttenoraApplication"
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
@@ -110,19 +110,19 @@
             android:finishOnCloseSystemDialogs="true"
             android:noHistory="true"
             android:taskAffinity=""
-            android:theme="@style/Theme.FocusGuard.Block" />
+            android:theme="@style/Theme.Attenora.Block" />
 
         <service
-            android:name=".enforcement.FocusGuardAccessibilityService"
+            android:name=".enforcement.AttenoraAccessibilityService"
             android:exported="true"
-            android:label="@string/a11y_focusguard_label"
+            android:label="@string/a11y_attenora_label"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />
             </intent-filter>
             <meta-data
                 android:name="android.accessibilityservice"
-                android:resource="@xml/accessibility_focusguard" />
+                android:resource="@xml/accessibility_attenora" />
         </service>
 
         <!-- Optional: mutes notifications from currently blocked apps. -->
