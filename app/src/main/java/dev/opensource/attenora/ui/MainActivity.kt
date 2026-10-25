@@ -21,8 +21,9 @@ import dev.opensource.attenora.ui.theme.AttenoraTheme
 
 /**
  * The app itself. There is no lock screen: Attenora opens straight into
- * your stats. The PIN still exists, but only as one of the ways to get past
- * a *limit* change (Settings -> Usage Limits and Tracking -> Limit protection).
+ * your stats. A challenge still exists, but only as one of the ways to get
+ * past a *limit* change (Settings -> Usage Limits and Tracking -> Limit
+ * protection): a math sum, or a passage you retype.
  */
 class MainActivity : ComponentActivity() {
 

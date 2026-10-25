@@ -391,12 +391,13 @@ class ChallengeEngineTest {
     }
 
     @Test
-    fun `every awareness passage is long, typable and unattributed`() {
-        assertTrue(ChallengeEngine.quotes.size >= 10)
+    fun `every awareness passage is typable and unattributed`() {
+        // StayFree's own pool: 104 texts, 14-216 characters (see quotes kdoc).
+        assertEquals(104, ChallengeEngine.quotes.size)
         ChallengeEngine.quotes.forEach { q ->
-            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 140..280)
+            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 14..216)
             assertTrue("non-ascii: ${q.text}", q.text.all { it.code in 0x20..0x7E })
-            // StayFree-style: no famous people, no proverbs, no credit line.
+            // StayFree-style: no credit line.
             assertTrue("attribution: ${q.source}", q.source.isBlank())
             assertTrue(ChallengeEngine.matchesQuote(q.text, q.text))
         }

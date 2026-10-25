@@ -4,7 +4,7 @@ First run of Attenora on stock Android. Everything here was verified on a
 HyperOS (Redmi) phone and on the emulator, so this pass is about the parts
 stock Android does differently — mainly accessibility and the block overlay.
 
-Device: __________  Android: ______  Build: 1.2.1 (versionCode 4)
+Device: __________  Android: ______  Build: 1.2.2 (versionCode 5)
 
 ## 1. Install (no gate)
 
@@ -74,4 +74,4 @@ Device: __________  Android: ______  Build: 1.2.1 (versionCode 4)
 
 Record pass/fail per section and paste any `FGD` logcat lines that look
 wrong into `test-report/pixel/`. A failure in 2 or 3 blocks the release;
-cosmetic issues get filed for 1.2.1.
+cosmetic issues get filed for 1.2.2.

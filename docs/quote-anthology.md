@@ -3,15 +3,25 @@
 **Status: retired in v1.2.1.** The 60 attributed quotes below were replaced by
 twelve neutral awareness passages with no author line (StayFree's own
 "Awareness Text Challenge" has no attribution either), and the option is now
-called **Type the passage**. The passage set lives in
-`ChallengeEngine.quotes`; the behaviour documented here — case-sensitive,
+called **Type the passage**. The behaviour documented here — case-sensitive,
 punctuation-exact retyping with only typographic look-alikes forgiven — is
 unchanged. Kept for the record.
 
+**v1.2.2:** the third option, `PIN`, was removed. Limit protection is now
+`Off / Math challenge / Type the passage`; anyone who had PIN protection set is
+migrated to the passage challenge rather than left unprotected.
+
+**v1.2.2, second pass:** the twelve in-house passages were replaced by
+**StayFree's own pool** — all 104 English `alarm_screen_blocked_text` strings
+extracted from the StayFree 20.11.0 APK (the same pool its block screen and its
+Awareness Text Challenge draw from), with decorative curly quotes stripped and
+the rest ASCII-fied. They range from 14 to 216 characters, no attribution, and
+live in `ChallengeEngine.quotes`. The dialog's input is now a growing
+multi-line box instead of a single scrolling line.
+
 60 quotes, all attributed to **the work and the author**, 70–100 characters,
-plain ASCII. It replaces the `Long word` value in **Settings → Usage Limits and
-Tracking → Limit protection** (`Off / PIN / Math challenge / Type the quote`).
-`PIN` and `Math challenge` are untouched and stay separate options.
+plain ASCII. It replaced the `Long word` value in **Settings → Usage Limits and
+Tracking → Limit protection** (`Off / Math challenge / Type the passage`).
 
 ---
 

@@ -10,7 +10,6 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "settings")
@@ -25,15 +24,15 @@ object ThemeMode {
 /** Challenge modes for Lock Usage Limits. */
 object ChallengeMode {
     const val NONE = "none"
-    const val PIN = "pin"
     const val CHALLENGE = "challenge"
+
+    /** v1.2.1 and earlier could also store "pin"; [challengeMode] reads it as [CHALLENGE]. */
+    const val LEGACY_PIN = "pin"
 }
 
 class SettingsRepository(private val context: Context) {
 
     private object Keys {
-        val PIN_HASH = stringPreferencesKey("pin_hash")
-        val PIN_SALT = stringPreferencesKey("pin_salt")
         val BLOCK_ALL_UNTIL = longPreferencesKey("block_all_until")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val ONBOARDING_STEP = intPreferencesKey("onboarding_step")
@@ -80,8 +79,6 @@ class SettingsRepository(private val context: Context) {
     }
 
     // ---- Existing (v1) ----
-    /** null = no PIN set; "" is used as a "still loading" sentinel by callers. */
-    val pinHash: Flow<String?> = context.dataStore.data.map { it[Keys.PIN_HASH] }
     val blockAllUntil: Flow<Long> = context.dataStore.data.map { it[Keys.BLOCK_ALL_UNTIL] ?: 0L }
     val onboardingDone: Flow<Boolean> = context.dataStore.data.map { it[Keys.ONBOARDING_DONE] ?: false }
     /** Last onboarding step the user reached, so setup survives process death. */
@@ -95,7 +92,15 @@ class SettingsRepository(private val context: Context) {
     val weekMondayFirst: Flow<Boolean> = context.dataStore.data.map { it[Keys.WEEK_MONDAY_FIRST] ?: true }
     /** Usage-day reset hour, 0..23 (0 = midnight). */
     val resetHour: Flow<Int> = context.dataStore.data.map { (it[Keys.RESET_HOUR] ?: 0).coerceIn(0, 23) }
-    val challengeMode: Flow<String> = context.dataStore.data.map { it[Keys.CHALLENGE_MODE] ?: ChallengeMode.NONE }
+    /**
+     * Limit protection mode. v1.2.1 and earlier offered a PIN; that option is
+     * gone, so a stored "pin" is served as the awareness challenge rather than
+     * silently turning protection off for someone who had set it.
+     */
+    val challengeMode: Flow<String> = context.dataStore.data.map {
+        val stored = it[Keys.CHALLENGE_MODE] ?: ChallengeMode.NONE
+        if (stored == ChallengeMode.LEGACY_PIN) ChallengeMode.CHALLENGE else stored
+    }
     val challengeType: Flow<String> = context.dataStore.data.map { it[Keys.CHALLENGE_TYPE] ?: "quote" }
     val ignoreWebsites: Flow<Boolean> = context.dataStore.data.map { it[Keys.IGNORE_WEBSITES] ?: false }
     val countdownOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.COUNTDOWN_ON] ?: true }
@@ -135,18 +140,6 @@ class SettingsRepository(private val context: Context) {
     val focusDay: Flow<String> = context.dataStore.data.map { it[Keys.FOCUS_DAY] ?: "" }
     /** Minutes accrued into [focusDay]. */
     val focusMinutes: Flow<Int> = context.dataStore.data.map { it[Keys.FOCUS_MIN] ?: 0 }
-
-    suspend fun setPin(hash: String?, salt: String?) = context.dataStore.edit { p ->
-        if (hash == null) {
-            p.remove(Keys.PIN_HASH)
-            p.remove(Keys.PIN_SALT)
-        } else {
-            p[Keys.PIN_HASH] = hash
-            p[Keys.PIN_SALT] = salt ?: ""
-        }
-    }
-
-    suspend fun getPinSalt(): String? = context.dataStore.data.first()[Keys.PIN_SALT]
 
     /** Marks a first-run hint as seen. Never un-set: a hint shows once ever. */
     suspend fun markHintSeen(id: String) = context.dataStore.edit { p ->

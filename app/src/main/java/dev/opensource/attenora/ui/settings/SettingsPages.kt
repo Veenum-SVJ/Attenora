@@ -58,7 +58,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -68,7 +67,6 @@ import dev.opensource.attenora.data.SettingsRepository
 import dev.opensource.attenora.data.ThemeMode
 import dev.opensource.attenora.enforcement.Alarms
 import dev.opensource.attenora.enforcement.AttenoraAccessibilityService
-import dev.opensource.attenora.security.PinManager
 import dev.opensource.attenora.ui.limits.rememberChallengeGate
 import dev.opensource.attenora.util.Grayscale
 import dev.opensource.attenora.ui.common.FgDivider
@@ -219,8 +217,6 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     val reelOpacity by container.settings.reelOverlayOpacity.collectAsState(initial = 1f)
     val challengeMode by container.settings.challengeMode.collectAsState(initial = ChallengeMode.NONE)
     val challengeType by container.settings.challengeType.collectAsState(initial = "quote")
-    val pinHash by container.settings.pinHash.collectAsState(initial = "")
-    val hasPin = pinHash != null && pinHash != ""
 
     // Turning protection off, or swapping it for something easier, is itself a
     // protection change: whoever is holding the phone must pass whatever is set
@@ -228,11 +224,6 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
     val gate = rememberChallengeGate()
 
     var showHourPicker by remember { mutableStateOf(false) }
-    var showPinDialog by remember { mutableStateOf(false) }
-    var showRemovePinConfirm by remember { mutableStateOf(false) }
-    // Tapping PIN with no PIN set opens the PIN dialog and arms the mode, so
-    // "protect limits with a PIN" is one action instead of two.
-    var pinRequested by rememberSaveable { mutableStateOf(false) }
 
     SettingsPage("Usage Limits and Tracking", onBack) {
         SectionLabel("Tracking")
@@ -281,29 +272,13 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(Modifier.height(10.dp))
-                val modeActive = challengeMode == ChallengeMode.PIN ||
-                    challengeMode == ChallengeMode.CHALLENGE
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    ChoicePill("Off", !modeActive) {
+                    ChoicePill("Off", challengeMode != ChallengeMode.CHALLENGE) {
                         gate.request {
                             scope.launch { container.settings.setChallengeMode(ChallengeMode.NONE) }
-                        }
-                    }
-                    ChoicePill("PIN", challengeMode == ChallengeMode.PIN) {
-                        if (hasPin) {
-                            gate.request {
-                                scope.launch {
-                                    container.settings.setChallengeMode(ChallengeMode.PIN)
-                                }
-                            }
-                        } else {
-                            gate.request {
-                                pinRequested = true
-                                showPinDialog = true
-                            }
                         }
                     }
                     ChoicePill(
@@ -329,49 +304,16 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                         }
                     }
                 }
-                if (!hasPin) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "PIN protection asks for a PIN you choose. Tap PIN to set one.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 if (challengeMode == ChallengeMode.CHALLENGE && challengeType != "math") {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "One of twelve passages, picked at random each time. It must be " +
-                            "retyped exactly — capital letters and punctuation included — " +
-                            "before a limit change goes through.",
+                        "One of 104 awareness texts, picked at random each time — the same " +
+                            "set StayFree uses. It must be retyped exactly, capital letters " +
+                            "and punctuation included, before a limit change goes through.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            }
-            FgDivider(inset = 20.dp)
-            if (!hasPin) {
-                Row(
-                    Modifier.fillMaxWidth().padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Limit PIN", style = MaterialTheme.typography.bodyLarge)
-                        Text(
-                            "Asked only when a limit is added, changed or removed.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    OutlinedButton(onClick = { showPinDialog = true }) { Text("Set PIN") }
-                }
-            } else {
-                NavRow("Change PIN", { gate.request { showPinDialog = true } }, value = "Set")
-                FgDivider(inset = 20.dp)
-                NavRow(
-                    title = "Remove PIN",
-                    subtitle = "Limits will no longer be protected",
-                    onClick = { gate.request { showRemovePinConfirm = true } }
-                )
             }
         }
     }
@@ -384,35 +326,6 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                 scope.launch { container.settings.setResetHour(hour) }
                 showHourPicker = false
             }
-        )
-    }
-    if (showPinDialog) {
-        PinSetupDialog(
-            onDismiss = { showPinDialog = false; pinRequested = false },
-            onSaved = { hash, salt ->
-                scope.launch {
-                    container.settings.setPin(hash, salt)
-                    // The PIN was asked for by the PIN pill: turning the mode on
-                    // now is what the tap meant.
-                    if (pinRequested) container.settings.setChallengeMode(ChallengeMode.PIN)
-                }
-                pinRequested = false
-                showPinDialog = false
-            }
-        )
-    }
-    if (showRemovePinConfirm) {
-        AlertDialog(
-            onDismissRequest = { showRemovePinConfirm = false },
-            title = { Text("Remove PIN?") },
-            text = { Text("Your limits and settings will no longer be protected.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch { container.settings.setPin(null, null) }
-                    showRemovePinConfirm = false
-                }) { Text("Remove") }
-            },
-            dismissButton = { TextButton(onClick = { showRemovePinConfirm = false }) { Text("Cancel") } }
         )
     }
 }
@@ -904,7 +817,7 @@ fun DataScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Every limit, schedule, blocked site, PIN and day of usage history is " +
+                    "Every limit, schedule, blocked site and day of usage history is " +
                         "deleted from this device. There is no cloud copy — this cannot be undone.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -923,7 +836,7 @@ fun DataScreen(onBack: () -> Unit) {
             title = { Text("Erase all data?") },
             text = {
                 Text(
-                    "Every limit, schedule, blocked site, PIN and day of usage history " +
+                    "Every limit, schedule, blocked site and day of usage history " +
                         "will be deleted from this device. There is no cloud copy — this " +
                         "cannot be undone."
                 )
@@ -953,54 +866,6 @@ fun DataScreen(onBack: () -> Unit) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Dialogs
 // ─────────────────────────────────────────────────────────────────────────────
-
-@Composable
-private fun PinSetupDialog(onDismiss: () -> Unit, onSaved: (hash: String, salt: String) -> Unit) {
-    var pin by rememberSaveable { mutableStateOf("") }
-    var confirm by rememberSaveable { mutableStateOf("") }
-    var error by rememberSaveable { mutableStateOf<String?>(null) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Set PIN") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) pin = it },
-                    label = { Text("4–6 digits") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
-                )
-                OutlinedTextField(
-                    value = confirm,
-                    onValueChange = { if (it.length <= 6 && it.all(Char::isDigit)) confirm = it },
-                    label = { Text("Repeat PIN") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword)
-                )
-                error?.let {
-                    Text(it, color = MaterialTheme.fg.danger, style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                when {
-                    pin.length < 4 -> error = "PIN must be at least 4 digits"
-                    pin != confirm -> error = "PINs don't match"
-                    else -> {
-                        val salt = PinManager.newSalt()
-                        onSaved(PinManager.hash(pin, salt), salt)
-                    }
-                }
-            }) { Text("Save") }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
-    )
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

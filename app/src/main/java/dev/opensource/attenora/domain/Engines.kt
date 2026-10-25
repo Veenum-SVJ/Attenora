@@ -206,7 +206,7 @@ object WeekEngine {
 }
 
 /**
- * Challenge gate for editing limits / toggling blocking / removing the PIN.
+ * Challenge gate for editing limits / toggling blocking / erasing data.
  *
  * Awareness-text challenge (StayFree-style): retype the shown passage EXACTLY.
  * Case and punctuation are part of the test — [normalize] only forgives
@@ -221,25 +221,118 @@ object ChallengeEngine {
     data class Quote(val text: String, val source: String)
 
     /**
-     * Long neutral awareness passages in the spirit of StayFree's text
-     * challenge: no famous people, no proverbs, no attribution — just a few
-     * deliberate sentences the reader must retype character for character.
-     * 140-280 characters each and pure ASCII so they can be typed on any
-     * keyboard. [Quote.source] is always blank so no credit line is shown.
+     * StayFree's own awareness pool: the 104 English texts of StayFree 20.11.0's
+     * `alarm_screen_blocked_text` string set, extracted from that APK, with the
+     * decorative curly quotes stripped and the remaining typography converted to
+     * plain ASCII (straight apostrophes, hyphens) so every character is
+     * reachable on a normal keyboard. 14-216 characters, no attribution —
+     * StayFree shows no credit line either, so [Quote.source] stays blank.
      */
     val quotes: List<Quote> = listOf(
-        Quote("You turned this challenge on to slow yourself down. Take the time to type each word, and remember that the app you are trying to open can wait a little longer.", ""),
-        Quote("Mindless scrolling is a decision you make without noticing. This pause is here so the choice becomes visible again, one keystroke at a time, before you continue.", ""),
-        Quote("The next few seconds are yours to spend deliberately. Breathe, read the line in front of you, and only then decide whether opening this app is what you actually want.", ""),
-        Quote("Every minute you type here is a minute you chose not to spend staring at a feed. That is the whole point of this gate: a small cost, paid on purpose, in full awareness.", ""),
-        Quote("Your future self will not remember the videos you watched today, but the time they took is gone all the same. Finish this line carefully, then choose with that in mind.", ""),
-        Quote("Attention is finite, and nobody hands it back once it is spent. Slow down, match every letter, and step through this gate only with a clear reason for doing so.", ""),
-        Quote("Habits survive on speed, and they fade the moment you introduce a pause. Typing this passage is that pause, so give it your full attention instead of rushing.", ""),
-        Quote("There is no emergency inside the app you are opening. There rarely is. Type the final line, take a breath, and let the urgency you feel pass before you go on.", ""),
-        Quote("You are not being punished here. You built this gate because past you wanted present you to stop, think, and move a little more slowly through the day.", ""),
-        Quote("What you do in the next hour sets the tone for the rest of it. Read carefully, type accurately, and carry that same care into whatever you open on the other side.", ""),
-        Quote("A goal without friction is only a wish, and this gate is the friction you asked for. Type it through, letter by letter, and keep the promise you made to yourself.", ""),
-        Quote("Scrolling asks nothing of you, which is exactly why it takes so much. This challenge asks a little back: patience, accuracy, and one honest moment of attention.", "")
+        Quote("Productivity is never an accident. It is always the result of a commitment to excellence, intelligent planning, and focused effort.", ""),
+        Quote("The bad news is time flies. The good news is you are the pilot.", ""),
+        Quote("Those, who make the worse use of their time, are the first to complain of its shortness.", ""),
+        Quote("Time is what we want most, but what we use worst.", ""),
+        Quote("It's not enough to be busy, so are the ants. The question is, what are we busy about?", ""),
+        Quote("Until you value yourself, you will not value your time. Until you value your time, you will not do anything with it.", ""),
+        Quote("Time is really the only capital that any human being has, and the only thing he can't afford to lose.", ""),
+        Quote("Your future is created by what you do today, not tomorrow.", ""),
+        Quote("You may delay, but time will not.", ""),
+        Quote("Ordinary people think merely of spending time. Great people think of using it.", ""),
+        Quote("Lost wealth may be replaced by industry, lost knowledge by study, lost health by temperance or medicine, but lost time is gone forever.", ""),
+        Quote("He who know most grieves most for wasted time.", ""),
+        Quote("Don't say you don't have enough time. You have exactly the same number of hours per day that were given to Helen Keller, Pasteur, Michelangelo, Mother Teresa, Leonardo da Vinci, Thomas Jefferson, and Albert Einstein.", ""),
+        Quote("A year from now you will wish you had started today.", ""),
+        Quote("The surest way to be late is to have plenty of time.", ""),
+        Quote("You can't get much done in life if you only work on days when you feel good.", ""),
+        Quote("Change your 24 hours and you will change your life.", ""),
+        Quote("Procrastination is the foundation of all disasters.", ""),
+        Quote("Better three hours too soon than a minute too late.", ""),
+        Quote("The secret of your future is hidden in your daily routine.", ""),
+        Quote("Time is the wisest counselor of all.", ""),
+        Quote("Lost time is never found again.", ""),
+        Quote("The best time to plant a tree is twenty years ago. The second best time is now.", ""),
+        Quote("Until we can manage time, we can manage nothing else.", ""),
+        Quote("The way we spend our time defines who we are.", ""),
+        Quote("Time is the most valuable thing a man can spend.", ""),
+        Quote("The trouble is, you think you have time.", ""),
+        Quote("Efficiency is doing things right; effectiveness is doing the right things.", ""),
+        Quote("Time management is life management.", ""),
+        Quote("Time has no meaning in itself unless we choose to give it significance.", ""),
+        Quote("Time flies over us, but leaves its shadow behind.", ""),
+        Quote("You can't make up for lost time. You can only do better in the future.", ""),
+        Quote("There's only one thing more precious than our time and that's who we spend it on.", ""),
+        Quote("If you love life, don't waste time, for time is what life is made up of.", ""),
+        Quote("Time slips away like grains of sand never to return again.", ""),
+        Quote("A man who dares to waste one hour of time has not discovered the value of life.", ""),
+        Quote("The time I kill is killing me.", ""),
+        Quote("Time waits for no one.", ""),
+        Quote("There's never enough time to do all the nothing you want.", ""),
+        Quote("It's not that we have little time, but more that we waste a good deal of it.", ""),
+        Quote("Either you run the day, or the day runs you.", ""),
+        Quote("All we have to decide is what to do with the time that is given us.", ""),
+        Quote("The time for action is now. It's never too late to do something.", ""),
+        Quote("We must use time as a tool, not as a crutch.", ""),
+        Quote("The common man is not concerned about the passage of time, the man of talent is driven by it.", ""),
+        Quote("We must use time wisely and forever realize that the time is always ripe to do right.", ""),
+        Quote("This is the key to time management - to see the value of every moment.", ""),
+        Quote("Time is money.", ""),
+        Quote("Time management requires self-discipline, self-mastery and self-control more than anything else.", ""),
+        Quote("You will never 'find' time for anything. If you want time, you must make it.", ""),
+        Quote("In truth, people can generally make time for what they choose to do; it is not really the time but the will that is lacking.", ""),
+        Quote("Time = life; therefore, waste your time and waste of your life, or master your time and master your life.", ""),
+        Quote("The two most powerful warriors are patience and time.", ""),
+        Quote("Don't wait for desperate times! Take action now, only if only baby steps.", ""),
+        Quote("You're becoming the type of person who chooses meaningful activities over mindless scrolling.", ""),
+        Quote("Look how far you've come-every minute you spend away from unnecessary apps strengthens your new habits.", ""),
+        Quote("Remember, you control your screen time, not the other way around.", ""),
+        Quote("Before tapping the next app, take a breath. Is this helping you become who you want to be?", ""),
+        Quote("You've committed to a healthier digital balance. Every positive choice you make today matters.", ""),
+        Quote("Your goal: more focus, less distraction. You're showing yourself it's possible.", ""),
+        Quote("Your new habits are taking root. Keep nurturing them and watch them grow.", ""),
+        Quote("You have the power to shape your digital experience into something productive and meaningful.", ""),
+        Quote("Every small improvement you make today brings you closer to your ideal balance.", ""),
+        Quote("You're in control of your choices-stay mindful and keep going.", ""),
+        Quote("What you focus on grows. Keep building positive habits.", ""),
+        Quote("You're creating more time for the things that truly matter.", ""),
+        Quote("Small steps lead to big change. You're on the right track.", ""),
+        Quote("You're becoming more intentional with every mindful decision.", ""),
+        Quote("Each moment you spend away from distractions is a win for your future self.", ""),
+        Quote("Keep going-you're proving that you can master your screen time.", ""),
+        Quote("Every mindful action is a step toward your goals.", ""),
+        Quote("You're stronger than any urge to mindlessly scroll. Stay focused.", ""),
+        Quote("Your future self will thank you for the choices you're making today.", ""),
+        Quote("You're redefining your relationship with your phone, one habit at a time.", ""),
+        Quote("Less scrolling, more living-you're doing great.", ""),
+        Quote("You've started a powerful shift. Keep it up.", ""),
+        Quote("You're staying present, and that's a real strength.", ""),
+        Quote("Real change comes from consistency, and you're showing up.", ""),
+        Quote("You're training your brain to focus better every day.", ""),
+        Quote("You're showing discipline, and that's impressive.", ""),
+        Quote("Is opening this app helping you right now-or just filling space?", ""),
+        Quote("Take a second. Breathe. Is this the best use of your time?", ""),
+        Quote("Pause and ask yourself: what do I really want to do right now?", ""),
+        Quote("You have the power to stop, reflect, and choose differently.", ""),
+        Quote("Your next choice can shift your whole day.", ""),
+        Quote("What you do now creates the momentum for what's next.", ""),
+        Quote("One breath. One pause. One better decision.", ""),
+        Quote("Awareness begins with a single moment of reflection.", ""),
+        Quote("Not everything requires your attention-choose wisely.", ""),
+        Quote("You are creating a life you're proud of.", ""),
+        Quote("You're proving that discipline can be gentle and powerful.", ""),
+        Quote("The change you seek is already within you.", ""),
+        Quote("You're writing a better story with each small decision.", ""),
+        Quote("You're becoming the focused, intentional person you dreamed of being.", ""),
+        Quote("Your habits shape your destiny-and you're shaping them.", ""),
+        Quote("Less distraction, more depth-that's your path.", ""),
+        Quote("You're here because you wanted change. And it's working.", ""),
+        Quote("Your goals matter. Keep choosing what aligns with them.", ""),
+        Quote("You have the final say in how you spend your time.", ""),
+        Quote("You're powerful enough to pause, think, and act mindfully.", ""),
+        Quote("Each moment is a new chance to choose better.", ""),
+        Quote("You are behind the wheel of your habits.", ""),
+        Quote("You're becoming the kind of person who uses technology with intention.", ""),
+        Quote("You are not your habits-you're the one who creates them.", "")
     )
 
     fun pickQuote(rng: Random = Random.Default): Quote =

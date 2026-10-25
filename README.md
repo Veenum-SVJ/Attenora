@@ -15,7 +15,8 @@ network access at all, and **no data that survives an uninstall**.
   ones like 23:00–07:00) that block everything or just your limited apps.
 - **Website blocking** *(optional)* — checks your browser's address bar against
   a local blocklist and shows the blocking screen on a hit.
-- **PIN + biometric lock** — protects limits and settings (PBKDF2-hashed PIN).
+- **Limit protection** — adding, editing or removing a limit can require solving
+  a small sum or retyping a short passage first.
 - **CSV export** — your last 90 days of usage, via the system file picker.
 - **Daily reminder** *(optional)* — a notification with your total screen time.
 

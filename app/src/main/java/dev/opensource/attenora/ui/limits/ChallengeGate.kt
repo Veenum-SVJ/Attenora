@@ -1,17 +1,15 @@
 package dev.opensource.attenora.ui.limits
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -21,34 +19,28 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import dev.opensource.attenora.data.ChallengeMode
-import dev.opensource.attenora.security.PinManager
 import dev.opensource.attenora.ui.common.LocalAppContainer
 import dev.opensource.attenora.domain.ChallengeEngine
-import kotlinx.coroutines.launch
 import kotlin.random.Random
 
 /**
- * Gate for sensitive actions (limit edits, blocking toggles, PIN removal,
- * wipe). Usage:
+ * Gate for sensitive actions (limit edits, blocking toggles, wipe). Usage:
  *
  * ```
  * val gate = rememberChallengeGate()
  * gate.request { doSensitiveThing() }
  * ```
  *
- * Behavior follows Settings → Lock Usage Limits: No Protection runs the
- * action directly; PIN Protection verifies the PIN; Require a Challenge
- * shows the awareness quote (or math) dialog.
+ * Behavior follows Settings → Lock Usage Limits: No Protection runs the action
+ * directly; Require a Challenge shows the awareness passage (or math) dialog.
  */
 class ChallengeGateState internal constructor(
     internal val requestInternal: (()-> Unit) -> Unit
@@ -62,30 +54,23 @@ fun rememberChallengeGate(): ChallengeGateState {
 
     val mode by container.settings.challengeMode.collectAsState(initial = "")
     val type by container.settings.challengeType.collectAsState(initial = "quote")
-    val pinHash by container.settings.pinHash.collectAsState(initial = "")
 
     var pending by remember { mutableStateOf<(() -> Unit)?>(null) }
     val gate = remember { ChallengeGateState({ action -> pending = action }) }
 
     val action = pending
     if (action != null) {
-        when {
+        when (mode) {
             // Still loading the real mode from DataStore — hold, don't leak a bypass.
-            mode == "" -> AlertDialog(
+            "" -> AlertDialog(
                 onDismissRequest = { pending = null },
                 confirmButton = {},
                 text = { Text("Checking lock settings…") }
             )
 
-            mode == ChallengeMode.NONE || (mode == ChallengeMode.PIN && pinHash == null) -> {
+            ChallengeMode.NONE -> {
                 LaunchedEffect(action) { pending = null; action() }
             }
-
-            mode == ChallengeMode.PIN -> PinChallenge(
-                expectedHash = pinHash!!,
-                onSuccess = { pending = null; action() },
-                onCancel = { pending = null }
-            )
 
             else -> AwarenessChallenge(
                 type = type,
@@ -99,50 +84,15 @@ fun rememberChallengeGate(): ChallengeGateState {
 }
 
 @Composable
-private fun PinChallenge(expectedHash: String, onSuccess: () -> Unit, onCancel: () -> Unit) {
-    val container = LocalAppContainer.current
-    val scope = rememberCoroutineScope()
-    var pin by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onCancel,
-        title = { Text("Enter your PIN") },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { if (it.length <= 8) { pin = it; error = false } },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                    isError = error,
-                    supportingText = if (error) {
-                        { Text("Wrong PIN") }
-                    } else null,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(enabled = pin.length >= 4, onClick = {
-                scope.launch {
-                    val salt = container.settings.getPinSalt()
-                    if (salt != null && PinManager.matches(pin, salt, expectedHash)) onSuccess()
-                    else { error = true; pin = "" }
-                }
-            }) { Text("Unlock") }
-        },
-        dismissButton = { TextButton(onClick = onCancel) { Text("Cancel") } }
-    )
-}
-
-@Composable
 private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: () -> Unit) {
-    val quote = remember { ChallengeEngine.pickQuote(Random(System.nanoTime())) }
-    val problem = remember { ChallengeEngine.randomMath(Random(System.nanoTime())) }
-    var input by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
+    // One seed per challenge, saved across configuration changes: showing the
+    // keyboard resizes the window, and a re-picked passage (or a re-picked sum)
+    // would strand whatever the user had already typed.
+    val seed = rememberSaveable { System.nanoTime() }
+    val quote = remember(seed) { ChallengeEngine.pickQuote(Random(seed)) }
+    val problem = remember(seed) { ChallengeEngine.randomMath(Random(seed)) }
+    var input by rememberSaveable { mutableStateOf("") }
+    var error by rememberSaveable { mutableStateOf(false) }
 
     val isMath = type == "math"
 
@@ -155,7 +105,9 @@ private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: ()
             )
         },
         text = {
-            Column {
+            // A passage plus a growing field can outrun a small screen's
+            // dialog height, so the whole challenge scrolls if it must.
+            Column(Modifier.verticalScroll(rememberScrollState())) {
                 if (isMath) {
                     Text(
                         problem.prompt(),
@@ -194,10 +146,22 @@ private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: ()
                 OutlinedTextField(
                     value = input,
                     onValueChange = { input = it; error = false },
-                    singleLine = true,
+                    // The sum is one number; the passage is a paragraph, so the
+                    // passage gets a tall, growing box that keeps every typed
+                    // line visible instead of one line scrolling sideways.
+                    singleLine = isMath,
+                    minLines = if (isMath) 1 else 4,
+                    maxLines = if (isMath) 1 else 8,
                     isError = error,
+                    // The lambda must sit directly in the parameter slot: an
+                    // if-expression wrapping it loses @Composable inference.
+                    placeholder = {
+                        if (!isMath) Text("Type the passage here")
+                    },
                     keyboardOptions = KeyboardOptions(
-                        keyboardType = if (isMath) KeyboardType.Number else KeyboardType.Text
+                        keyboardType = if (isMath) KeyboardType.Number else KeyboardType.Text,
+                        // Suggestions rewrite what was typed; the check is exact.
+                        autoCorrectEnabled = if (isMath) null else false
                     ),
                     supportingText = if (error) {
                         { Text(if (isMath) "Not quite — try again" else "It doesn't match yet") }
