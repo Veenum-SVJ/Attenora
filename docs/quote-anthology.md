@@ -1,6 +1,12 @@
 # Quote anthology — the "type it exactly" limit-edit gate
 
-**Status: shipped.** Wired into `ChallengeEngine` in commit `TBD`.
+**Status: retired in v1.2.1.** The 60 attributed quotes below were replaced by
+twelve neutral awareness passages with no author line (StayFree's own
+"Awareness Text Challenge" has no attribution either), and the option is now
+called **Type the passage**. The passage set lives in
+`ChallengeEngine.quotes`; the behaviour documented here — case-sensitive,
+punctuation-exact retyping with only typographic look-alikes forgiven — is
+unchanged. Kept for the record.
 
 60 quotes, all attributed to **the work and the author**, 70–100 characters,
 plain ASCII. It replaces the `Long word` value in **Settings → Usage Limits and

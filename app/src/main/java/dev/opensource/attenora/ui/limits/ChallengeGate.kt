@@ -150,7 +150,7 @@ private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: ()
         onDismissRequest = onCancel,
         title = {
             Text(
-                if (isMath) "Solve to continue" else "Type the quote",
+                if (isMath) "Solve to continue" else "Type the passage",
                 fontWeight = FontWeight.SemiBold
             )
         },
@@ -174,13 +174,15 @@ private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: ()
                             .fillMaxWidth()
                             .padding(top = 8.dp, bottom = 6.dp)
                     )
-                    Text(
-                        "— ${quote.source}",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                    if (quote.source.isNotBlank()) {
+                        Text(
+                            "— ${quote.source}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
                     Text(
                         "Type it exactly. Capitals and punctuation count.",
                         style = MaterialTheme.typography.bodySmall,

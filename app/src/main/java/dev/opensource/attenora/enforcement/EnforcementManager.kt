@@ -99,9 +99,9 @@ class EnforcementManager(
         db.focusScheduleDao().observeAll()
             .stateIn(scope, SharingStarted.Eagerly, emptyList())
 
-    val sessionGrants: StateFlow<Map<String, Long>> =
+    val sessionGrants: StateFlow<Map<String, dev.opensource.attenora.data.SessionGrant>> =
         db.sessionGrantDao().observeAll()
-            .map { list -> list.associate { it.targetId to it.untilMs } }
+            .map { list -> list.associate { it.targetId to it } }
             .stateIn(scope, SharingStarted.Eagerly, emptyMap())
 
     val categoryMembers: StateFlow<List<dev.opensource.attenora.data.CategoryMember>> =
@@ -155,7 +155,11 @@ class EnforcementManager(
     private val exhausted = HashMap<String, Exhausted>(8)
 
     fun onForeground(pkg: String?) {
+        val prev = usage.currentForeground()
         usage.noteForeground(pkg)
+        // Whatever was on screen before just was not: a running session for it
+        // pauses here instead of ticking down while the user is elsewhere.
+        if (prev != null && prev != pkg) scope.launch { pauseSessionsFor(prev) }
         val target = pkg ?: return
         scope.launch { evaluate(target) }
     }
@@ -172,6 +176,10 @@ class EnforcementManager(
             lastReconcileAt = now
             runCatching { usage.reconcileNow() }
         }
+
+        // The target is on screen again: any time it spent paused is handed
+        // back to its session before the decision below reads the window.
+        runCatching { resumeSessionsFor(pkg, now) }
 
         val decision = decisionFor(pkg, now)
 
@@ -310,8 +318,12 @@ class EnforcementManager(
                     // lags a write by a few ms made a running session look
                     // unstarted, and re-granting from that restarted the
                     // clock instead of ever letting it expire.
-                    val grantUntil = runCatching { db.sessionGrantDao().until(target) }
-                        .getOrNull() ?: 0L
+                    val row = runCatching { db.sessionGrantDao().get(target) }.getOrNull()
+                    val grantUntil = LimitEngine.effectiveGrantEnd(
+                        grantUntilMs = row?.untilMs ?: 0L,
+                        pausedAtMs = row?.pausedAtMs ?: 0L,
+                        now = now
+                    )
                     when (LimitEngine.sessionAction(grantUntil, limit.cooldownMs, now)) {
                         LimitEngine.SessionAction.ACTIVE -> {
                             // Count the live session toward "remaining" so the
@@ -348,6 +360,51 @@ class EnforcementManager(
         }
 
         return Decision(blocked = false, remainingMs = remaining, autoSession = autoSession)
+    }
+
+    /**
+     * [pkg] just left the foreground: freeze every session window it is
+     * spending, so the window keeps its remaining time instead of running out
+     * while the user is in another app or on the home screen. A window that
+     * has already ended is left alone — that is the cooldown, which is meant
+     * to be wall-clock time.
+     */
+    private suspend fun pauseSessionsFor(pkg: String, now: Long = System.currentTimeMillis()) {
+        for (limit in limits.value) {
+            if (!limit.enabled || limit.type != LimitType.SESSION) continue
+            if (!targetCovers(limit, pkg)) continue
+            val target = sessionTarget(limit, pkg)
+            val row = runCatching { db.sessionGrantDao().get(target) }.getOrNull() ?: continue
+            if (row.pausedAtMs != 0L || row.untilMs <= now) continue
+            db.sessionGrantDao().upsert(row.copy(pausedAtMs = now))
+            dev.opensource.attenora.util.Diag.d("session pause $target at=$now")
+        }
+    }
+
+    /**
+     * [pkg] is back on screen: hand back every second it spent paused by
+     * pushing [SessionGrant.untilMs] forward, then clear the marker. Done as a
+     * write (rather than only at read time) so the extended window survives a
+     * later process death.
+     */
+    private suspend fun resumeSessionsFor(pkg: String, now: Long = System.currentTimeMillis()) {
+        for (limit in limits.value) {
+            if (!limit.enabled || limit.type != LimitType.SESSION) continue
+            if (!targetCovers(limit, pkg)) continue
+            val target = sessionTarget(limit, pkg)
+            val row = runCatching { db.sessionGrantDao().get(target) }.getOrNull() ?: continue
+            if (row.pausedAtMs == 0L) continue
+            // Only a window that was still running when the app was left gets
+            // its time back; a marker that outlived the window is cleared
+            // without extending anything (see LimitEngine.effectiveGrantEnd).
+            val pausedFor =
+                if (row.pausedAtMs < row.untilMs) (now - row.pausedAtMs).coerceAtLeast(0L) else 0L
+            val until = row.untilMs + pausedFor
+            db.sessionGrantDao().upsert(row.copy(untilMs = until, pausedAtMs = 0L))
+            dev.opensource.attenora.util.Diag.d(
+                "session resume $target pausedFor=${pausedFor}ms until=$until"
+            )
+        }
     }
 
     /** Does [limit] target this package directly, via its category, or everything? */

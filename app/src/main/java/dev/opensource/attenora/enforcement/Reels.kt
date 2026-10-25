@@ -24,8 +24,17 @@ object Reels {
         "com.google.android.youtube" to listOf(
             "reel_recycler", "reel_watch", "reel_player", "shorts"
         ),
+        // Instagram: only the immersive viewer's own container ids count.
+        // The bare "clips_"/"reels" fragments were matching the home feed —
+        // an in-feed Reel renders as `root_clips_layout` at ~88% of the window
+        // (confirmed on a 2026 build, Pixel: bounds [0,128][1080,2241]), so it
+        // cleared the size gate and every swipe on the home feed counted. The
+        // viewer carries `clips_viewer_container` / `clips_viewer_view_pager`
+        // over the same area, and neither id exists anywhere in the home feed
+        // (only `clips_tab`, `reel_empty_badge`, `reels_tray_container` — all
+        // far too small to pass the gate).
         "com.instagram.android" to listOf(
-            "clips_viewer", "clips_", "reel_viewer", "reels"
+            "clips_viewer", "reel_viewer"
         ),
         "com.facebook.katana" to listOf(
             "clips_", "reel_"
@@ -180,11 +189,23 @@ object Reels {
     /**
      * True when a screen-filling video surface alone identifies the feed.
      * Every supported app plays full-bleed video in its short-video feed, so
-     * this is no longer TikTok-only: Instagram Reels, Shorts, Facebook Reels
-     * and Spotlight all qualify, while their home feeds only show small
-     * inline videos that fail the size gate.
+     * this is no longer TikTok-only: Shorts, Facebook Reels and Spotlight all
+     * qualify, while their home feeds only show small inline videos that fail
+     * the size gate.
+     *
+     * Instagram is deliberately excluded (see [videoClassFeed]): its home feed
+     * also plays video near full-bleed — an in-feed post measured ~67% of the
+     * window — so "big player" alone would count browsing the home feed.
      */
     fun isFullFeed(pkg: String): Boolean = canonical(pkg) in markers
+
+    /**
+     * Whether the size-of-the-player path may mark [pkg]'s feed on its own.
+     * False for Instagram, where the home feed's own players are as big as the
+     * viewer's: there only the viewer ids in [markers] may mark the surface.
+     */
+    fun videoClassFeed(pkg: String): Boolean =
+        isFullFeed(pkg) && canonical(pkg) != "com.instagram.android"
 
     /** Packages worth scanning at all (fast reject for everything else). */
     fun appliesTo(pkg: String): Boolean = canonical(pkg) in markers

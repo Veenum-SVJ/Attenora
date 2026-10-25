@@ -70,6 +70,37 @@ class AttenoraAccessibilityService : AccessibilityService() {
             restoreIfOurs() // never leave the display stuck monochrome behind a locked screen
             stopLimitWatch() // nothing is foreground while the screen is off
             dropReelOverlay() // …and nothing should keep a count over the lock screen
+            hidePill() // …nor a countdown ticking over it
+            // Locking the phone with an app open ends that foreground stretch:
+            // live usage stops accruing and a running session pauses instead
+            // of burning against the wall clock while the screen is dark.
+            container.enforcement.onForeground(null)
+        }
+    }
+
+    /**
+     * Coming back from the lock screen often emits no window-state event for
+     * the app that was already open, so re-derive the foreground from the
+     * window actually on screen — otherwise usage tracking and a paused
+     * session stay frozen while the user is using the app again.
+     */
+    private val screenOnReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            syncForegroundFromWindow()
+        }
+    }
+
+    private fun syncForegroundFromWindow() {
+        mainHandler.post {
+            val pkg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+                ?.takeIf { it.isNotEmpty() && it != packageName } ?: return@post
+            lastForeground = pkg
+            container.enforcement.onForeground(pkg)
+            updateCountdown(pkg)
+            applyGrayscale(pkg)
+            startLimitWatch(pkg)
+            onReelForeground(pkg)
+            ensureBlockCovered(pkg)
         }
     }
 
@@ -84,6 +115,17 @@ class AttenoraAccessibilityService : AccessibilityService() {
             val pkg = pillPkg ?: return
             if (!pillShown) return
             container.scope.launch {
+                // The pill belongs to the app that is actually on screen. A
+                // window event can be missed (recents, a lock, an OEM-swallowed
+                // transition), and the ticker would then keep counting down over
+                // another app — which reads exactly like "the timer keeps running
+                // after I leave". Re-check what is really in front, once a second.
+                val onScreen = runCatching { rootInActiveWindow?.packageName?.toString() }
+                    .getOrNull()
+                if (onScreen != null && onScreen != pkg) {
+                    mainHandler.post { if (pillPkg == pkg) hidePill() }
+                    return@launch
+                }
                 val decision = container.enforcement.decisionFor(pkg)
                 val remaining = remainingFor(decision)
                 mainHandler.post {
@@ -269,6 +311,9 @@ class AttenoraAccessibilityService : AccessibilityService() {
         }
         runCatching {
             registerReceiver(screenOffReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
+        }
+        runCatching {
+            registerReceiver(screenOnReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON))
         }
         // If the service bound after the last window event (e.g. enabled
         // mid-session from Settings), lastForeground is still null — ask the
@@ -930,7 +975,7 @@ class AttenoraAccessibilityService : AccessibilityService() {
         val bigEnough = (windowArea * REEL_SURFACE_RATIO).toLong()
         val chatEnough = (windowArea * REEL_CHAT_RATIO).toLong()
         val chatIds = Reels.chatIdsFor(pkg)
-        val acceptVideoClass = Reels.isFullFeed(pkg)
+        val acceptVideoClass = Reels.videoClassFeed(pkg)
         val queue = ArrayDeque<AccessibilityNodeInfo>()
         queue.add(root)
         var visited = 0
@@ -951,9 +996,13 @@ class AttenoraAccessibilityService : AccessibilityService() {
                 val rect = Rect()
                 node.getBoundsInScreen(rect)
                 val area = rect.width().toLong() * rect.height()
-                if (definitive && bigOnes.size < 4) {
+                // Filled on every logged scan, not just navigations: when a
+                // screen is miscounted the only way to tell *which* node
+                // carried the marker is to see the big ids beside it. Cheap
+                // (four strings, scans run at most every 2 s).
+                if (bigOnes.size < 6) {
                     val pct = (area * 100 / windowArea).toInt()
-                    if (pct >= 35) {
+                    if (pct >= 30) {
                         bigOnes.add(
                             (node.viewIdResourceName ?: "").substringAfterLast('/').ifEmpty { "-" } +
                                 "@$pct%:" + (node.className?.toString() ?: "").substringAfterLast('.')

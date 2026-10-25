@@ -54,9 +54,13 @@ class UsageRepository(
 
     fun currentForeground(): String? = currentPkg
 
-    /** Called from the accessibility monitor on every foreground transition. */
+    /**
+     * Called from the accessibility monitor on every foreground transition.
+     * A null pkg means "nothing is on screen" (screen off): the live segment
+     * stops there, so time with the display dark never accrues as usage.
+     */
     fun noteForeground(pkg: String?, now: Long = clock()) {
-        if (pkg == null || pkg == currentPkg) return
+        if (pkg == currentPkg) return
         currentPkg = pkg
         currentSinceMs = now
     }

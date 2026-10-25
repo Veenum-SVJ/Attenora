@@ -294,21 +294,14 @@ private fun BlockContent(pkg: String?, reason: String, domain: String?, untilMs:
             textAlign = TextAlign.Center
         )
         // A line to read instead of a line to obey. The block screen never asks
-        // for a code, so this is text only - picked once per block, not per
-        // recomposition.
-        val quote = remember { ChallengeEngine.pickQuote() }
+        // for a code, so this is text only - one sentence, picked once per
+        // block, not per recomposition.
+        val line = remember { ChallengeEngine.pickShortLine() }
         Spacer(Modifier.height(24.dp))
         Text(
-            quote.text,
+            line,
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center
-        )
-        Spacer(Modifier.height(6.dp))
-        Text(
-            "— ${quote.source}",
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
             textAlign = TextAlign.Center
         )
         unlockAt?.let { at ->

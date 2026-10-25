@@ -318,7 +318,7 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                         }
                     }
                     ChoicePill(
-                        "Type the quote",
+                        "Type the passage",
                         challengeMode == ChallengeMode.CHALLENGE && challengeType != "math"
                     ) {
                         gate.request {
@@ -340,7 +340,7 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                 if (challengeMode == ChallengeMode.CHALLENGE && challengeType != "math") {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "One of 60 lines, picked at random each time. It must be " +
+                        "One of twelve passages, picked at random each time. It must be " +
                             "retyped exactly — capital letters and punctuation included — " +
                             "before a limit change goes through.",
                         style = MaterialTheme.typography.bodySmall,

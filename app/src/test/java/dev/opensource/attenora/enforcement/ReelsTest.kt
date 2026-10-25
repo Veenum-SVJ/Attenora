@@ -62,6 +62,62 @@ class ReelsTest {
     }
 
     @Test
+    fun `instagram home feed is not the reels viewer`() {
+        // Regression, Pixel 2026-10-25: an in-feed Reel renders as
+        // `root_clips_layout` at ~88 % of the window, so the old "clips_"
+        // fragment matched it and every swipe on the home feed counted.
+        // Only the viewer's own container ids may mark the surface.
+        val markers = Reels.markersFor("com.instagram.android")
+        assertTrue("clips_viewer" in markers)
+        assertTrue("reel_viewer" in markers)
+
+        // Home feed ids, all captured from a real home-feed dump.
+        for (homeId in listOf(
+            "com.instagram.android:id/root_clips_layout",
+            "com.instagram.android:id/reels_tray_container",
+            "com.instagram.android:id/reel_empty_badge",
+            "com.instagram.android:id/clips_tab"
+        )) {
+            assertFalse(
+                "$homeId must not match a marker",
+                markers.any { homeId.contains(it, ignoreCase = true) }
+            )
+        }
+
+        // Reels viewer ids, captured from a real Reels-tab dump. Only the
+        // viewer's own container/pager may mark the surface: the media
+        // container below is deliberately *not* a marker, because an in-feed
+        // Reel can reuse the same clips components and must not count.
+        for (viewerId in listOf(
+            "com.instagram.android:id/clips_viewer_container",
+            "com.instagram.android:id/clips_viewer_view_pager",
+            "com.instagram.android:id/clips_viewer_action_bar"
+        )) {
+            assertTrue(
+                "$viewerId must match a marker",
+                markers.any { viewerId.contains(it, ignoreCase = true) }
+            )
+        }
+        assertFalse(
+            "the clips media container alone must not mark the surface",
+            markers.any { "com.instagram.android:id/clips_video_container".contains(it, ignoreCase = true) }
+        )
+    }
+
+    @Test
+    fun `instagram alone may not be marked by player size alone`() {
+        // Instagram's home feed plays video near full-bleed, so "big player"
+        // is not evidence of the viewer there. Everywhere else the home feed's
+        // inline videos stay under the size gate, so the shortcut is kept.
+        assertFalse(Reels.videoClassFeed("com.instagram.android"))
+        assertFalse(Reels.videoClassFeed("com.instagram.lite"))
+        assertTrue(Reels.videoClassFeed("com.google.android.youtube"))
+        assertTrue(Reels.videoClassFeed("com.snapchat.android"))
+        assertTrue(Reels.videoClassFeed("com.facebook.katana"))
+        assertFalse(Reels.videoClassFeed("com.whatsapp"))
+    }
+
+    @Test
     fun `repackaged clients resolve to their family`() {
         // Morphe / Pico / InstaPro style repacks keep neither the label nor a
         // tidy package name, but the family token is still in there.

@@ -59,6 +59,7 @@ import dev.opensource.attenora.data.LimitType
 import dev.opensource.attenora.data.TargetKind
 import dev.opensource.attenora.data.UsageLimit
 import dev.opensource.attenora.enforcement.FocusSession
+import dev.opensource.attenora.domain.LimitEngine
 import dev.opensource.attenora.domain.WeekEngine
 import dev.opensource.attenora.ui.common.AppIcon
 import dev.opensource.attenora.ui.common.FgCard
@@ -296,7 +297,13 @@ fun UsageLimitsScreen(query: String, onAddLimit: () -> Unit, onBlockKeywords: ()
                             targetKind = limit.targetKind,
                             targetId = limit.targetId,
                             title = targetLabel(limit.targetKind, limit.targetId, context),
-                            subtitle = grants[limit.targetId]?.let { until ->
+                            subtitle = grants[limit.targetId]?.let { grant ->
+                                // A paused session shows the end it will have
+                                // once the app is used again, not the stale
+                                // wall-clock end.
+                                val until = LimitEngine.effectiveGrantEnd(
+                                    grant.untilMs, grant.pausedAtMs, System.currentTimeMillis()
+                                )
                                 if (until > System.currentTimeMillis()) "Session until ${
                                     formatClock(java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).hour * 60 +
                                         java.time.Instant.ofEpochMilli(until).atZone(ZoneId.systemDefault()).minute)

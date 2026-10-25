@@ -22,3 +22,5 @@ test-report/
 keystore/
 *.jks
 *.keystore
+
+emulator.log

@@ -217,6 +217,45 @@ class TypedLimitEngineTest {
     }
 
     @Test
+    fun `a paused session freezes its remaining time instead of running out`() {
+        // Not paused: the stored end is the end.
+        assertEquals(10_000L, LimitEngine.effectiveGrantEnd(10_000L, pausedAtMs = 0L, now = 5_000))
+
+        // Left the app at 8_000, checking back a second later: the end has
+        // moved on with the clock (11_000), so what is left is the 2_000 that
+        // was left on leaving — not the 1_000 the wall clock would give.
+        assertEquals(
+            11_000L,
+            LimitEngine.effectiveGrantEnd(10_000L, pausedAtMs = 8_000L, now = 9_000)
+        )
+        assertEquals(
+            2_000L,
+            LimitEngine.effectiveGrantEnd(10_000L, pausedAtMs = 8_000L, now = 9_000) - 9_000
+        )
+        // Still 2_000 after five more minutes away: a paused session does not
+        // drain, however long the app stays closed.
+        assertEquals(
+            2_000L,
+            LimitEngine.effectiveGrantEnd(10_000L, pausedAtMs = 8_000L, now = 60_000) - 60_000
+        )
+
+        // A window that had already ended when the app was left cools down on
+        // the wall clock: no pause marker is written for it, and a nonsensical
+        // one must never extend a finished window either.
+        assertEquals(
+            7_000L,
+            LimitEngine.effectiveGrantEnd(7_000L, pausedAtMs = 9_000L, now = 10_000)
+        )
+        assertTrue(
+            LimitEngine.sessionCoolingDown(
+                LimitEngine.effectiveGrantEnd(7_000L, pausedAtMs = 0L, now = 8_000L),
+                cooldownMs = 60_000L,
+                now = 8_000
+            )
+        )
+    }
+
+    @Test
     fun `session action grants again once the cooldown has elapsed`() {
         val until = 10_000L
         val cooldown = 60_000L
@@ -352,12 +391,13 @@ class ChallengeEngineTest {
     }
 
     @Test
-    fun `every quote is typable and inside the length band`() {
-        assertTrue(ChallengeEngine.quotes.size >= 60)
+    fun `every awareness passage is long, typable and unattributed`() {
+        assertTrue(ChallengeEngine.quotes.size >= 10)
         ChallengeEngine.quotes.forEach { q ->
-            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 70..100)
+            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 140..280)
             assertTrue("non-ascii: ${q.text}", q.text.all { it.code in 0x20..0x7E })
-            assertTrue("no credit: ${q.text}", q.source.isNotBlank())
+            // StayFree-style: no famous people, no proverbs, no credit line.
+            assertTrue("attribution: ${q.source}", q.source.isBlank())
             assertTrue(ChallengeEngine.matchesQuote(q.text, q.text))
         }
     }
@@ -367,6 +407,18 @@ class ChallengeEngineTest {
         val rng = Random(42)
         repeat(20) {
             assertTrue(ChallengeEngine.pickQuote(rng) in ChallengeEngine.quotes)
+        }
+    }
+
+    @Test
+    fun `block screen line is one sentence taken from a passage`() {
+        val rng = Random(5)
+        val passages = ChallengeEngine.quotes.map { it.text }
+        repeat(20) {
+            val line = ChallengeEngine.pickShortLine(rng)
+            assertTrue("line: $line", line.endsWith("."))
+            assertTrue("line: $line", line.length < 140)
+            assertTrue("not from the set: $line", passages.any { it.startsWith(line) })
         }
     }
 

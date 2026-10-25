@@ -80,7 +80,22 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
         }
     }
     var pickerOpen by remember { mutableStateOf(false) }
-    var type by remember { mutableStateOf<String?>(if (initialPkg != null) LimitType.DAILY else null) }
+    // Multi-select: daily, session and schedule can all be set in one save;
+    // "Block permanently" is exclusive. Arriving from an app's own page still
+    // preselects a daily limit, as before.
+    var types by remember {
+        mutableStateOf(
+            if (initialPkg != null) setOf(LimitType.DAILY) else emptySet<String>()
+        )
+    }
+    val toggleType: (String) -> Unit = { t ->
+        types = if (t == LimitType.PERMANENT) {
+            if (LimitType.PERMANENT in types) emptySet() else setOf(LimitType.PERMANENT)
+        } else {
+            val others = types - LimitType.PERMANENT
+            if (t in others) others - t else others + t
+        }
+    }
 
     var dailyMinutes by remember { mutableStateOf("30") }
     var startMinute by remember { mutableStateOf(9 * 60) }
@@ -132,12 +147,18 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 20.dp)
         )
+        Text(
+            "Pick as many as you like — daily, session and schedule are all saved together. Block permanently stands alone.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+        )
         Spacer(Modifier.height(10.dp))
 
         // Each type's options render directly under the row that opened them,
         // above "Want to name your limit?" — nothing jumps to the bottom.
-        TypeRow("Set a Daily Usage Limit", type == LimitType.DAILY) { type = LimitType.DAILY }
-        if (type == LimitType.DAILY) {
+        TypeRow("Set a Daily Usage Limit", LimitType.DAILY in types) { toggleType(LimitType.DAILY) }
+        if (LimitType.DAILY in types) {
             OutlinedTextField(
                 value = dailyMinutes,
                 onValueChange = { dailyMinutes = it.filter(Char::isDigit).take(5) },
@@ -150,8 +171,8 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
             )
         }
 
-        TypeRow("Block on a schedule", type == LimitType.SCHEDULE) { type = LimitType.SCHEDULE }
-        if (type == LimitType.SCHEDULE) {
+        TypeRow("Block on a schedule", LimitType.SCHEDULE in types) { toggleType(LimitType.SCHEDULE) }
+        if (LimitType.SCHEDULE in types) {
             ScheduleEditor(
                 startMinute = startMinute,
                 endMinute = endMinute,
@@ -162,8 +183,8 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
             )
         }
 
-        TypeRow("Block permanently", type == LimitType.PERMANENT) { type = LimitType.PERMANENT }
-        if (type == LimitType.PERMANENT) {
+        TypeRow("Block permanently", LimitType.PERMANENT in types) { toggleType(LimitType.PERMANENT) }
+        if (LimitType.PERMANENT in types) {
             Text(
                 "This target will be blocked at all times until you remove the limit.",
                 style = MaterialTheme.typography.bodySmall,
@@ -172,8 +193,8 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
             )
         }
 
-        TypeRow("Set a fixed session limit", type == LimitType.SESSION) { type = LimitType.SESSION }
-        if (type == LimitType.SESSION) {
+        TypeRow("Set a fixed session limit", LimitType.SESSION in types) { toggleType(LimitType.SESSION) }
+        if (LimitType.SESSION in types) {
             OutlinedTextField(
                 value = sessionMinutes,
                 onValueChange = { sessionMinutes = it.filter(Char::isDigit).take(4) },
@@ -241,24 +262,24 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
             TextButton(onClick = onBack, modifier = Modifier.weight(1f)) { Text("Cancel") }
             OutlinedButton(
                 onClick = {
-                    val t = type
+                    val ts = types.toList()
                     error = when {
                         targets.isEmpty() -> "Pick at least one app, website, or category."
-                        t == null -> "Choose how you want to limit usage."
-                        t == LimitType.DAILY && dailyMinutes.toIntOrNull()?.let { it <= 0 } != false ->
+                        ts.isEmpty() -> "Choose how you want to limit usage."
+                        LimitType.DAILY in ts && dailyMinutes.toIntOrNull()?.let { it <= 0 } != false ->
                             "Enter a daily limit in minutes."
-                        t == LimitType.SESSION && sessionMinutes.toIntOrNull()?.let { it <= 0 } != false ->
+                        LimitType.SESSION in ts && sessionMinutes.toIntOrNull()?.let { it <= 0 } != false ->
                             "Enter the session length in minutes."
-                        t == LimitType.SESSION && cooldownMinutes.toIntOrNull()?.let { it <= 0 } != false ->
+                        LimitType.SESSION in ts && cooldownMinutes.toIntOrNull()?.let { it <= 0 } != false ->
                             "Enter a cooldown in minutes (at least 1)."
-                        t != LimitType.SCHEDULE && targets.any { it.kind == TargetKind.ALL } ->
+                        ts.any { it != LimitType.SCHEDULE } && targets.any { it.kind == TargetKind.ALL } ->
                             "\"Everything\" only works with Block on a schedule."
                         else -> null
                     }
-                    if (error == null && t != null) {
+                    if (error == null && ts.isNotEmpty()) {
                         gate.request {
                         scope.launch {
-                            for (target in targets) {
+                            for (t in ts) for (target in targets) {
                                 when {
                                     target.kind == TargetKind.ALL && t == LimitType.SCHEDULE -> {
                                         container.db.focusScheduleDao().upsert(
@@ -491,7 +512,18 @@ private fun TargetPicker(selected: MutableList<Target>, onDone: () -> Unit) {
     }
 
     val sites by container.blocklist.collectAsState()
-    val today by container.usage.todayFlow().collectAsState(initial = emptyList())
+    // Seed today's usage synchronously before the first frame: with only the
+    // async flow the picker opened with an empty usage map, so the list was
+    // alphabetical until a later recomposition re-sorted it (observed on both
+    // Pixel and Redmi, 2026-10-25 — it looked like visiting the Websites tab
+    // and coming back "switched" it to most-used-first). The flow below keeps
+    // the order live afterwards.
+    val todaySeed = remember {
+        kotlinx.coroutines.runBlocking {
+            container.db.dailyUsageDao().forDay(container.usage.todayKey())
+        }
+    }
+    val today by container.usage.todayFlow().collectAsState(initial = todaySeed)
     // Most-used first, so the apps that actually need a limit are at the top
     // instead of buried under an alphabetical list.
     val usedByPkg = remember(today) {

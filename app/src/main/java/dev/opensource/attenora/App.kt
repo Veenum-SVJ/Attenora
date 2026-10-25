@@ -50,6 +50,17 @@ private val MIGRATION_3_4 = object : Migration(3, 4) {
     }
 }
 
+/**
+ * v4 → v5: session grants gained a pause marker, so a session counts only
+ * while its app is on screen. One column with a default keeps every existing
+ * grant (and all usage history) exactly as it was.
+ */
+private val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE session_grants ADD COLUMN pausedAtMs INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
 class AttenoraApplication : Application() {
     lateinit var container: AppContainer
         private set
@@ -71,7 +82,7 @@ class AppContainer(val app: Context) {
     private val containerInitT0 = android.os.SystemClock.elapsedRealtime()
 
     val db: AppDatabase = Room.databaseBuilder(app, AppDatabase::class.java, "attenora.db")
-        .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+        .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
         .fallbackToDestructiveMigration()
         .build()
 

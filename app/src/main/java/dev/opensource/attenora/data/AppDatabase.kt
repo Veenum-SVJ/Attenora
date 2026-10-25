@@ -167,11 +167,19 @@ data class ReelCount(
     val count: Int
 )
 
-/** Variable-session grant: target blocked-vs-free window. */
+/** Variable-session grant: target blocked-vs-free window.
+ *
+ * [pausedAtMs] freezes that window while the target is not in the foreground
+ * (0 = running). A session is meant to be *used* time: leaving the app must
+ * not burn it against the wall clock, so the time spent away is added back to
+ * [untilMs] when the app is next opened. Stored rather than kept in memory so
+ * the pause survives a process death or a reboot.
+ */
 @Entity(tableName = "session_grants", primaryKeys = ["targetId"])
 data class SessionGrant(
     val targetId: String,
-    val untilMs: Long
+    val untilMs: Long,
+    val pausedAtMs: Long = 0L
 )
 
 /** Troubleshooting log of block hits. */
@@ -491,6 +499,10 @@ interface SessionGrantDao {
     @Query("SELECT untilMs FROM session_grants WHERE targetId = :targetId")
     suspend fun until(targetId: String): Long?
 
+    /** Full grant row (including its pause marker) for [targetId]. */
+    @Query("SELECT * FROM session_grants WHERE targetId = :targetId")
+    suspend fun get(targetId: String): SessionGrant?
+
     @Upsert
     suspend fun upsert(grant: SessionGrant)
 
@@ -532,7 +544,7 @@ interface MetaDao {
         HiddenItem::class, ElementRule::class, ElementUsage::class, SessionGrant::class,
         BlockEvent::class, MetaEntry::class, ReelCount::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

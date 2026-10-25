@@ -4,7 +4,7 @@ First run of Attenora on stock Android. Everything here was verified on a
 HyperOS (Redmi) phone and on the emulator, so this pass is about the parts
 stock Android does differently — mainly accessibility and the block overlay.
 
-Device: __________  Android: ______  Build: 1.2.0 (versionCode 3)
+Device: __________  Android: ______  Build: 1.2.1 (versionCode 4)
 
 ## 1. Install (no gate)
 
