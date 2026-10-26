@@ -227,6 +227,9 @@ object ChallengeEngine {
      * plain ASCII (straight apostrophes, hyphens) so every character is
      * reachable on a normal keyboard. 14-216 characters, no attribution —
      * StayFree shows no credit line either, so [Quote.source] stays blank.
+     *
+     * The gate's typing challenge draws from [passages]; this pool feeds the
+     * block screen's one-line cover via [pickShortLine].
      */
     val quotes: List<Quote> = listOf(
         Quote("Productivity is never an accident. It is always the result of a commitment to excellence, intelligent planning, and focused effort.", ""),
@@ -335,17 +338,40 @@ object ChallengeEngine {
         Quote("You are not your habits-you're the one who creates them.", "")
     )
 
+    /**
+     * The long passages the Awareness Challenge asks the user to retype:
+     * several deliberate sentences (356-485 characters, pure ASCII, no
+     * attribution) so the pause costs real time instead of a glance. Longer
+     * than anything in [quotes] on purpose — the friction is the feature.
+     */
+    val passages: List<Quote> = listOf(
+        Quote("You opened this gate on purpose. Somewhere in the past there was an evening you lost to a feed and never got back, and the person you were then decided that enough was enough. This pause is the wall they built for you. Nothing about it is a punishment; it is only a few minutes of friction standing between an urge and an action. Read the passage, type it slowly, and when the last letter lands, decide again whether what is behind this screen is worth the minutes it is about to take.", ""),
+        Quote("The app on the other side of this screen has trained itself to be easy and trained you to be fast. This challenge is the opposite: slow, deliberate, and boring by design. Every letter you type is a second in which the urge gets weaker and the choice gets clearer. If what you want is genuinely worth it, it will still be there when the passage ends. If the urge dies somewhere in the middle of this sentence, then the gate already did its job.", ""),
+        Quote("Think about why you turned this on. Not the general reason, the specific one: the video you did not mean to watch, the hour that vanished, the morning you opened your phone and lost the first hour standing up. That is what this typing is for. You are paying a small cost now so you do not pay a bigger one later. Type every word, notice how the rush fades, and decide with the patience this passage just gave you.", ""),
+        Quote("There is no emergency here. The feed will not collapse, the post will not escape, and nobody's life depends on what is behind this gate. What does depend on you is the next half hour, and it is currently headed toward a bright rectangle that will remember nothing and give back nothing. Type this passage with the care you wish your attention had, and then decide whether this was really where you wanted to be.", ""),
+        Quote("Your attention is the raw material of everything you will ever make, learn, or love. Right now an app is asking to spend some of it, and the price it quotes is always the same: free. This passage is where you read the fine print. The minutes you spend typing are not lost; they are the moment in which you get to choose on purpose instead of by reflex. Finish the line, and make the reflex wait for your answer.", ""),
+        Quote("Somewhere behind this gate is a version of tonight you would be proud of. It does not start with a swipe. It starts here, with you typing a paragraph you did not want to type, on purpose, because you remember what evenings used to feel like before they became a feed. Take your time. Breathe between the sentences. The pause is not in the way of your life; right now, it is the best part of it.", ""),
+        Quote("You have done harder things than this. You have studied, worked, waited, kept promises that cost you something. Compared to all of that, retyping a paragraph is nothing, which is exactly the point: if this small friction is enough to stop you, the thing on the other side was not worth stopping for. And if you keep going anyway, you will arrive with your intention intact and your eyes open.", ""),
+        Quote("Every scroll is a trade: your minutes for someone else's metrics. Nobody at the other end is checking whether you got a fair price. This gate exists so that the trade at least happens in daylight. Type the passage word by word and feel the difference between wanting something and just reaching for it. Then trade if you still want to, with the count of what you are spending fresh in your mind.", ""),
+        Quote("This pause was built by someone who knows you: past you, the one who kept losing evenings and decided to do something about it. They cannot stop you, and they would not want to; they only wanted the decision to be made slowly, in full view, with your own hand. So type, letter by letter, and when you finish, you can still go on. But go on as the person who decided, not the person who drifted.", ""),
+        Quote("The urge to scroll feels urgent, but urgency is the trick. Nothing behind this screen gets worse while you type. The video will play at the same speed, the posts will sit exactly where they are. What does change while you type is you: the fog lifts a little, the pull gets weaker, and the room you are sitting in comes back into focus. Finish the passage and look up once before you choose.", ""),
+        Quote("Ask the question the feed never asks: what will you have at the end of this hour? Not scrolled, not watched, not cleared, but had. A memory? A skill? A conversation? If the answer is nothing, that hour is not free; it is the most expensive thing you own being given away in silence. Type this passage slowly. It is the cheapest hour you will ever buy back.", ""),
+        Quote("You are not in trouble. There is no score, no streak, and no one watching. This gate only asks for a few deliberate minutes because deliberate is exactly what the other thing is not. The app behind the gate is built to be forgotten about, entered without thought, and left hours later without a reason. You are here to think. So think while you type, and give the thought enough letters to finish.", ""),
+        Quote("One day is all you ever get at a time, and this one is currently on sale to the lowest bidder: whatever glows, whatever autoplays, whatever is nearest. You did not come here for that. You came here because part of you still wants the day back. This passage is the toll booth on the way to it. Type every word, and drive out of here slowly, in the direction you actually meant to go.", ""),
+        Quote("Notice what happened the moment this gate appeared: your thumb reached for the fastest exit. That reflex is not you; it is a habit with a thousand hours of practice. This typing is how you take the hours back, one awkward sentence at a time. Go slowly. Let the thumb wait. By the final word the urgency will have loosened, and what remains is the only thing that was ever really here: a choice.", "")
+    )
+
     fun pickQuote(rng: Random = Random.Default): Quote =
-        quotes[rng.nextInt(quotes.size)]
+        passages[rng.nextInt(passages.size)]
 
     /**
-     * One sentence of the awareness set, for the block screen. The gate needs a
-     * full passage to retype; a cover only needs a line to read while it is up,
-     * so this returns the first sentence of a random passage instead of the
-     * whole paragraph.
+     * One short StayFree line for the block screen. The gate needs a full
+     * passage to retype ([passages]); a cover only needs a line to read while
+     * it is up, so this returns the first sentence of a random text from the
+     * StayFree [quotes] pool instead.
      */
     fun pickShortLine(rng: Random = Random.Default): String {
-        val text = pickQuote(rng).text
+        val text = quotes[rng.nextInt(quotes.size)].text
         val stop = text.indexOf(". ")
         return if (stop > 0) text.substring(0, stop + 1) else text
     }

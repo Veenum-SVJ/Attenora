@@ -85,9 +85,8 @@ fun BlockKeywordsScreen(onBack: () -> Unit) {
             Spacer(Modifier.width(8.dp))
             OutlinedButton(enabled = input.isNotBlank(), onClick = {
                 val word = input.trim()
-                gate.request {
-                    scope.launch { container.db.blockKeywordDao().insert(BlockKeyword(word, System.currentTimeMillis())) }
-                }
+                // Adding a keyword is setting, not editing: no gate.
+                scope.launch { container.db.blockKeywordDao().insert(BlockKeyword(word, System.currentTimeMillis())) }
                 input = ""
             }) { Text("Add") }
         }

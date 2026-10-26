@@ -28,6 +28,7 @@ object Notifier {
     private const val ID_ASSISTANT = 4100
     private const val ID_TOTAL10 = 4200
     private const val ID_FOCUS = 4300
+    private const val ID_MONITOR_OFF = 4400
 
     @Volatile private var lastTotal10At = 0L
     private const val TOTAL10_INTERVAL_MS = 10 * 60_000L
@@ -84,6 +85,29 @@ object Notifier {
         post(context, ("five:$target").hashCode(), base(context, CHANNEL_ALERTS)
             .setContentTitle("5 minutes left")
             .setContentText("$label has 5 minutes remaining today.")
+            .setAutoCancel(true)
+            .build())
+    }
+
+    /**
+     * The App monitor was turned off under us — a reboot, or the vendor
+     * revoking accessibility for a sideloaded app (HyperOS does this). Unlike
+     * every other notification this one ignores the per-feature toggles: the
+     * user cannot act on limits that nobody is watching, and it fires at most
+     * once per boot.
+     */
+    fun onMonitorDisabled(context: Context) {
+        val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pi = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        post(context, ID_MONITOR_OFF, base(context, CHANNEL_ALERTS)
+            .setContentTitle("App monitor is off")
+            .setContentText("Limit blocking and the reel counter are paused. " +
+                "Tap to turn the App monitor back on.")
+            .setContentIntent(pi)
             .setAutoCancel(true)
             .build())
     }

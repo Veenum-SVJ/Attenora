@@ -663,12 +663,9 @@ fun AttenoraMark(
     }
 }
 
-/**
- * Major version only, e.g. "V1". Point releases are deliberately invisible in
- * the UI — the app shows the generation, not the patch level.
- */
+/** Full version, e.g. "V1.2.3". */
 val FgVersionLabel: String =
-    "V" + dev.opensource.attenora.BuildConfig.VERSION_NAME.substringBefore('.')
+    "V" + dev.opensource.attenora.BuildConfig.VERSION_NAME
 
 /** Centred, dimmed app identity line used at the foot of Settings. */
 @Composable

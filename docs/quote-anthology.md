@@ -19,9 +19,17 @@ the rest ASCII-fied. They range from 14 to 216 characters, no attribution, and
 live in `ChallengeEngine.quotes`. The dialog's input is now a growing
 multi-line box instead of a single scrolling line.
 
+**v1.2.3:** the option is renamed **Awareness Challenge**. The typing challenge
+no longer draws from that pool — it draws from a dedicated set of long
+in-house passages (356–485 characters, `ChallengeEngine.passages`); the
+StayFree pool stays as the block screen's one-line cover (`pickShortLine`).
+The gate is also **edit-only** now: adding a new limit, setting in-app
+blocking, and adding a keyword never ask, while changing or removing something
+that already exists still does.
+
 60 quotes, all attributed to **the work and the author**, 70–100 characters,
 plain ASCII. It replaced the `Long word` value in **Settings → Usage Limits and
-Tracking → Limit protection** (`Off / Math challenge / Type the passage`).
+Tracking → Limit protection** (`Off / Math challenge / Awareness Challenge`).
 
 ---
 

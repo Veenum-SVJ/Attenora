@@ -54,6 +54,13 @@ class SettingsRepository(private val context: Context) {
         val HINTS_SEEN = stringSetPreferencesKey("hints_seen")
         val LAUNCHER_ICON = intPreferencesKey("launcher_icon")
         val ICON_ACCENT = intPreferencesKey("icon_accent")
+        /**
+         * True once the App monitor accessibility service has ever connected.
+         * Some vendors (HyperOS in particular) revoke accessibility for
+         * sideloaded apps on reboot; the boot receiver uses this to notice the
+         * revocation and tell the user, instead of the counter silently dying.
+         */
+        val A11Y_EVER_ON = booleanPreferencesKey("a11y_ever_on")
 
         val ASSISTANT_ON = booleanPreferencesKey("assistant_on")
         val TOTAL10_ON = booleanPreferencesKey("total10_on")
@@ -114,6 +121,8 @@ class SettingsRepository(private val context: Context) {
     val hintsSeen: Flow<Set<String>> = context.dataStore.data.map { it[Keys.HINTS_SEEN] ?: emptySet() }
     val launcherIcon: Flow<Int> = context.dataStore.data.map { it[Keys.LAUNCHER_ICON] ?: 0 }
     val iconAccent: Flow<Int> = context.dataStore.data.map { it[Keys.ICON_ACCENT] ?: 0 }
+    /** True once the App monitor service has connected at least once. */
+    val a11yEverOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.A11Y_EVER_ON] ?: false }
 
     val assistantOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.ASSISTANT_ON] ?: false }
     val total10On: Flow<Boolean> = context.dataStore.data.map { it[Keys.TOTAL10_ON] ?: false }
@@ -145,6 +154,9 @@ class SettingsRepository(private val context: Context) {
     suspend fun markHintSeen(id: String) = context.dataStore.edit { p ->
         p[Keys.HINTS_SEEN] = (p[Keys.HINTS_SEEN] ?: emptySet()) + id
     }
+
+    /** Latches the first App monitor connection. See [a11yEverOn]. */
+    suspend fun markA11yEverOn() = context.dataStore.edit { it[Keys.A11Y_EVER_ON] = true }
 
     suspend fun setBlockAllUntil(time: Long) = context.dataStore.edit { it[Keys.BLOCK_ALL_UNTIL] = time }
     suspend fun setOnboardingDone(on: Boolean) = context.dataStore.edit { it[Keys.ONBOARDING_DONE] = on }

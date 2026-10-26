@@ -391,35 +391,45 @@ class ChallengeEngineTest {
     }
 
     @Test
-    fun `every awareness passage is typable and unattributed`() {
-        // StayFree's own pool: 104 texts, 14-216 characters (see quotes kdoc).
-        assertEquals(104, ChallengeEngine.quotes.size)
-        ChallengeEngine.quotes.forEach { q ->
-            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 14..216)
+    fun `challenge passages are long, typable and unattributed`() {
+        // The typing challenge draws from the long set: 356-485 characters.
+        assertTrue(ChallengeEngine.passages.size >= 12)
+        ChallengeEngine.passages.forEach { q ->
+            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 300..520)
             assertTrue("non-ascii: ${q.text}", q.text.all { it.code in 0x20..0x7E })
-            // StayFree-style: no credit line.
             assertTrue("attribution: ${q.source}", q.source.isBlank())
             assertTrue(ChallengeEngine.matchesQuote(q.text, q.text))
         }
     }
 
     @Test
-    fun `pick quote always returns a configured quote`() {
-        val rng = Random(42)
-        repeat(20) {
-            assertTrue(ChallengeEngine.pickQuote(rng) in ChallengeEngine.quotes)
+    fun `stayfree block-screen pool is intact`() {
+        // StayFree's own pool: 104 texts, 14-216 characters (see quotes kdoc).
+        assertEquals(104, ChallengeEngine.quotes.size)
+        ChallengeEngine.quotes.forEach { q ->
+            assertTrue("length ${q.text.length}: ${q.text}", q.text.length in 14..216)
+            assertTrue("non-ascii: ${q.text}", q.text.all { it.code in 0x20..0x7E })
+            assertTrue("attribution: ${q.source}", q.source.isBlank())
         }
     }
 
     @Test
-    fun `block screen line is one sentence taken from a passage`() {
+    fun `pick quote always returns a configured passage`() {
+        val rng = Random(42)
+        repeat(20) {
+            assertTrue(ChallengeEngine.pickQuote(rng) in ChallengeEngine.passages)
+        }
+    }
+
+    @Test
+    fun `block screen line is one sentence taken from the stayfree pool`() {
         val rng = Random(5)
-        val passages = ChallengeEngine.quotes.map { it.text }
+        val texts = ChallengeEngine.quotes.map { it.text }
         repeat(20) {
             val line = ChallengeEngine.pickShortLine(rng)
             assertTrue("line: $line", line.endsWith("."))
             assertTrue("line: $line", line.length < 140)
-            assertTrue("not from the set: $line", passages.any { it.startsWith(line) })
+            assertTrue("not from the set: $line", texts.any { it.startsWith(line) })
         }
     }
 

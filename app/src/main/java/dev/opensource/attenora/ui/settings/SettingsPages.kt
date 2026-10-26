@@ -293,7 +293,7 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                         }
                     }
                     ChoicePill(
-                        "Type the passage",
+                        "Awareness Challenge",
                         challengeMode == ChallengeMode.CHALLENGE && challengeType != "math"
                     ) {
                         gate.request {
@@ -307,9 +307,10 @@ fun TrackingSettingsScreen(onBack: () -> Unit) {
                 if (challengeMode == ChallengeMode.CHALLENGE && challengeType != "math") {
                     Spacer(Modifier.height(10.dp))
                     Text(
-                        "One of 104 awareness texts, picked at random each time — the same " +
-                            "set StayFree uses. It must be retyped exactly, capital letters " +
-                            "and punctuation included, before a limit change goes through.",
+                        "One of several long awareness passages, picked at random each " +
+                            "time. It must be retyped exactly, capital letters and " +
+                            "punctuation included, before an existing limit is changed. " +
+                            "Adding a new limit never asks.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

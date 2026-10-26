@@ -15,8 +15,9 @@ network access at all, and **no data that survives an uninstall**.
   ones like 23:00–07:00) that block everything or just your limited apps.
 - **Website blocking** *(optional)* — checks your browser's address bar against
   a local blocklist and shows the blocking screen on a hit.
-- **Limit protection** — adding, editing or removing a limit can require solving
-  a small sum or retyping a short passage first.
+- **Limit protection** — changing or removing an existing limit can require
+  solving a small sum or retyping a long awareness passage first. Adding a new
+  limit never asks.
 - **CSV export** — your last 90 days of usage, via the system file picker.
 - **Daily reminder** *(optional)* — a notification with your total screen time.
 

@@ -70,7 +70,6 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val gate = rememberChallengeGate()
 
     // Arriving from an app's own page means the target is already decided and
     // the only sensible question left is how long — so open on a daily limit.
@@ -277,7 +276,8 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
                         else -> null
                     }
                     if (error == null && ts.isNotEmpty()) {
-                        gate.request {
+                        // Adding a limit is not an edit: the challenge guards
+                        // changes to limits that already exist, not new ones.
                         scope.launch {
                             for (t in ts) for (target in targets) {
                                 when {
@@ -321,7 +321,6 @@ fun AddLimitScreen(onBack: () -> Unit, initialPkg: String? = null) {
                                 context, container.db.focusScheduleDao().all()
                             )
                             saved = true
-                        }
                         }
                     }
                 },

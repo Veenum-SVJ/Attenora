@@ -268,9 +268,30 @@ class BootReceiver : BroadcastReceiver() {
                     container.settings.weeklyDay.first(),
                     container.settings.weeklyMinute.first()
                 )
+                // HyperOS (and some other vendors) revoke accessibility for
+                // sideloaded apps on reboot, silently killing limit blocking
+                // and the reel counter. If the monitor had ever worked and is
+                // now gone, say so instead of letting it die quietly.
+                if (container.settings.a11yEverOn.first() &&
+                    !isAccessibilityServiceEnabled(context)
+                ) {
+                    Notifier.onMonitorDisabled(context)
+                }
             } finally {
                 pending.finish()
             }
+        }
+    }
+
+    /** True when the App monitor is among the system's enabled services. */
+    private fun isAccessibilityServiceEnabled(context: Context): Boolean {
+        val expected = android.content.ComponentName(context, AttenoraAccessibilityService::class.java)
+        val enabled = android.provider.Settings.Secure.getString(
+            context.contentResolver,
+            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ) ?: return false
+        return enabled.split(':').any {
+            android.content.ComponentName.unflattenFromString(it) == expected
         }
     }
 }

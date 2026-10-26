@@ -277,6 +277,10 @@ class AttenoraAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         container.a11yConnected = true
+        // Latch that the monitor worked at least once, so the boot receiver can
+        // tell a vendor-revoked service (HyperOS disables sideloaded
+        // accessibility after reboot) apart from one the user never enabled.
+        container.scope.launch { container.settings.markA11yEverOn() }
         Diag.d(
             "service connected reels=${container.reelCounterOn.value} " +
                 "web=${container.webBlockingActive.value} sdk=${android.os.Build.VERSION.SDK_INT}"
@@ -1151,6 +1155,15 @@ class AttenoraAccessibilityService : AccessibilityService() {
         reelPendingSrc = "${eventSourceClass(e)} fills=${sourceFillsWindow(e)} dy=${e.scrollDeltaY}"
         mainHandler.removeCallbacks(reelCommit)
         mainHandler.postDelayed(reelCommit, REEL_COMMIT_QUIET_MS)
+        // The count must not blink out mid-session: the hold timer is keyed to
+        // counted commits, so a burst of swipes that has not committed yet let
+        // the overlay fade while the user was still scrolling. Every swipe
+        // event re-arms the fade, so the number stays up while the feed moves
+        // and fades once the scrolling actually stops.
+        if (reelShown) {
+            mainHandler.removeCallbacks(reelFadeOut)
+            mainHandler.postDelayed(reelFadeOut, REEL_HOLD_MS)
+        }
     }
 
     /** Short class name of the node that produced [e], for the diagnostics log. */

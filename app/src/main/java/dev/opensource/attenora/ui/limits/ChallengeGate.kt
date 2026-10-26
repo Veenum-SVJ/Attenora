@@ -100,7 +100,7 @@ private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: ()
         onDismissRequest = onCancel,
         title = {
             Text(
-                if (isMath) "Solve to continue" else "Type the passage",
+                if (isMath) "Solve to continue" else "Awareness Challenge",
                 fontWeight = FontWeight.SemiBold
             )
         },
@@ -156,7 +156,7 @@ private fun AwarenessChallenge(type: String, onSuccess: () -> Unit, onCancel: ()
                     // The lambda must sit directly in the parameter slot: an
                     // if-expression wrapping it loses @Composable inference.
                     placeholder = {
-                        if (!isMath) Text("Type the passage here")
+                        if (!isMath) Text("Retype the passage here")
                     },
                     keyboardOptions = KeyboardOptions(
                         keyboardType = if (isMath) KeyboardType.Number else KeyboardType.Text,

@@ -56,7 +56,6 @@ import dev.opensource.attenora.ui.common.formatDuration
 import dev.opensource.attenora.ui.common.isAccessibilityServiceEnabled
 import dev.opensource.attenora.ui.common.openAccessibilitySettings
 import dev.opensource.attenora.ui.icons.FgIcons
-import dev.opensource.attenora.ui.limits.rememberChallengeGate
 import dev.opensource.attenora.ui.theme.FgColors
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -70,7 +69,6 @@ fun InAppBlockingScreen() {
     val container = LocalAppContainer.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val gate = rememberChallengeGate()
 
     val rules by container.db.elementRuleDao().observeAll()
         .collectAsState(initial = emptyList())
@@ -230,12 +228,12 @@ fun InAppBlockingScreen() {
                                 Modifier
                                     .fillMaxWidth()
                                     .clickable {
-                                        gate.request {
-                                            scope.launch {
-                                                container.db.elementRuleDao().upsert(
-                                                    ElementRule(pkg, element.key, !enabled)
-                                                )
-                                            }
+                                        // Setting in-app blocking is not an
+                                        // edit of an existing limit: no gate.
+                                        scope.launch {
+                                            container.db.elementRuleDao().upsert(
+                                                ElementRule(pkg, element.key, !enabled)
+                                            )
                                         }
                                     }
                                     .padding(horizontal = 16.dp, vertical = 10.dp),
@@ -251,11 +249,11 @@ fun InAppBlockingScreen() {
                                 Switch(
                                     checked = enabled,
                                     onCheckedChange = { on ->
-                                        gate.request {
-                                            scope.launch {
-                                                container.db.elementRuleDao()
-                                                    .upsert(ElementRule(pkg, element.key, on))
-                                            }
+                                        // Same as the row tap: setting rules
+                                        // is not editing an existing limit.
+                                        scope.launch {
+                                            container.db.elementRuleDao()
+                                                .upsert(ElementRule(pkg, element.key, on))
                                         }
                                     }
                                 )
