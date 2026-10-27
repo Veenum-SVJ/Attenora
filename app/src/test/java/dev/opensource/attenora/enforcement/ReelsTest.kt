@@ -50,10 +50,12 @@ class ReelsTest {
     }
 
     @Test
-    fun `a full-bleed video identifies the short-video feed in every supported app`() {
-        // Every supported app plays its short videos full-bleed. The size gate
-        // (65 % of the window) is what keeps a small inline video in a normal
-        // feed from counting, not a per-app allowlist.
+    fun `every supported app is scanned for markers`() {
+        // isFullFeed only answers "is this a short-video app we count at all".
+        // Whether a screen-filling video actually marks the surface is the
+        // narrower question in `instagram and snapchat are not marked by
+        // player size alone`. The size gate (65 % of the window) is what keeps
+        // a small inline video in a normal feed from counting.
         assertTrue(Reels.isFullFeed("com.zhiliaoapp.musically"))
         assertTrue(Reels.isFullFeed("com.instagram.android"))
         assertTrue(Reels.isFullFeed("com.google.android.youtube"))
@@ -105,16 +107,57 @@ class ReelsTest {
     }
 
     @Test
-    fun `instagram alone may not be marked by player size alone`() {
+    fun `instagram and snapchat are not marked by player size alone`() {
         // Instagram's home feed plays video near full-bleed, so "big player"
         // is not evidence of the viewer there. Everywhere else the home feed's
         // inline videos stay under the size gate, so the shortcut is kept.
         assertFalse(Reels.videoClassFeed("com.instagram.android"))
         assertFalse(Reels.videoClassFeed("com.instagram.lite"))
+
+        // Regression, Pixel 2026-10-27: a story, a snap playing back in a
+        // conversation and a Spotlight video are all full-bleed video, so the
+        // size path counted every swipe in Stories and in opened snaps as a
+        // Spotlight reel. Snapchat must be marker-only, like Instagram.
+        assertFalse(Reels.videoClassFeed("com.snapchat.android"))
+
         assertTrue(Reels.videoClassFeed("com.google.android.youtube"))
-        assertTrue(Reels.videoClassFeed("com.snapchat.android"))
         assertTrue(Reels.videoClassFeed("com.facebook.katana"))
         assertFalse(Reels.videoClassFeed("com.whatsapp"))
+    }
+
+    @Test
+    fun `snapchat counts only inside spotlight`() {
+        // The one marker family Snapchat exposes: everything the counter may
+        // mark there has to name Spotlight itself.
+        val markers = Reels.markersFor("com.snapchat.android")
+        assertTrue("spotlight" in markers)
+
+        // A verified Spotlight surface still matches.
+        for (spotId in listOf(
+            "com.snapchat.android:id/spotlight_container",
+            "com.snapchat.android:id/spotlight_feed_pager"
+        )) {
+            assertTrue(
+                "$spotId must match a marker",
+                markers.any { spotId.contains(it, ignoreCase = true) }
+            )
+        }
+
+        // Everything else a person does in Snapchat — stories, the camera, an
+        // opened snap — carries no spotlight id in any full-screen node, so no
+        // marker passes and the surface is never marked. If one of these ever
+        // matched, the old counting bug is back.
+        for (elsewhereId in listOf(
+            "com.snapchat.android:id/story_viewer_page",
+            "com.snapchat.android:id/friends_story_recycler",
+            "com.snapchat.android:id/discover_feed",
+            "com.snapchat.android:id/chat_message_list"
+        )) {
+            assertFalse(
+                "$elsewhereId must not match a marker",
+                markers.any { elsewhereId.contains(it, ignoreCase = true) }
+            )
+        }
     }
 
     @Test

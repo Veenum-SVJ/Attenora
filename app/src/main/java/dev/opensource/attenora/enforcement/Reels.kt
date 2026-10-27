@@ -193,19 +193,27 @@ object Reels {
      * qualify, while their home feeds only show small inline videos that fail
      * the size gate.
      *
-     * Instagram is deliberately excluded (see [videoClassFeed]): its home feed
-     * also plays video near full-bleed — an in-feed post measured ~67% of the
-     * window — so "big player" alone would count browsing the home feed.
+     * Instagram and Snapchat are deliberately excluded (see [videoClassFeed]).
      */
     fun isFullFeed(pkg: String): Boolean = canonical(pkg) in markers
 
+    /** Apps where a big video alone is not proof of the short-video feed. */
+    private val markerOnly = setOf("com.instagram.android", "com.snapchat.android")
+
     /**
      * Whether the size-of-the-player path may mark [pkg]'s feed on its own.
+     *
      * False for Instagram, where the home feed's own players are as big as the
      * viewer's: there only the viewer ids in [markers] may mark the surface.
+     *
+     * False for Snapchat for the same class of reason, learned on a Pixel:
+     * a story, a snap playing back in a conversation and a Spotlight video are
+     * all full-bleed video, so "big player" cannot separate them — every
+     * swipe in Stories and in opened snaps counted as a Spotlight reel. There
+     * only the Spotlight ids in [markers] may mark the surface.
      */
     fun videoClassFeed(pkg: String): Boolean =
-        isFullFeed(pkg) && canonical(pkg) != "com.instagram.android"
+        isFullFeed(pkg) && canonical(pkg) !in markerOnly
 
     /** Packages worth scanning at all (fast reject for everything else). */
     fun appliesTo(pkg: String): Boolean = canonical(pkg) in markers
