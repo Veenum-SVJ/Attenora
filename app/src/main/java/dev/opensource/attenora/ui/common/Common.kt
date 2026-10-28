@@ -311,6 +311,8 @@ fun PermissionRow(
     title: String,
     granted: Boolean,
     actionLabel: String,
+    note: String? = null,
+    warn: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
@@ -320,25 +322,41 @@ fun PermissionRow(
             .fillMaxWidth()
             .padding(vertical = 6.dp)
     ) {
+        val semantic = dev.opensource.attenora.ui.theme.LocalFgSemantic.current
         Box(
             Modifier
                 .size(10.dp)
                 .clip(CircleShape)
                 .background(
-                    if (granted) dev.opensource.attenora.ui.theme.LocalFgSemantic.current.success
-                    else dev.opensource.attenora.ui.theme.LocalFgSemantic.current.danger
+                    when {
+                        // Granted but not running: the permission is there and
+                        // the service is not, which is a fault, not a refusal.
+                        warn -> semantic.warning
+                        granted -> semantic.success
+                        else -> semantic.danger
+                    }
                 )
         )
         Spacer(Modifier.width(10.dp))
-        Text(
-            title,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.weight(1f)
-        )
-        if (granted) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium
+            )
+            if (note != null) {
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    note,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Spacer(Modifier.width(8.dp))
+        if (granted && !warn) {
             Text(
                 "Granted",
-                color = dev.opensource.attenora.ui.theme.LocalFgSemantic.current.success,
+                color = semantic.success,
                 style = MaterialTheme.typography.labelMedium
             )
         } else {

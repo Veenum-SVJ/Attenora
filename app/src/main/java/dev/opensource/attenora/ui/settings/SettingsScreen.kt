@@ -22,6 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import dev.opensource.attenora.enforcement.AttenoraAccessibilityService
+import dev.opensource.attenora.enforcement.MonitorWatchdog
 import dev.opensource.attenora.ui.common.AboutFooter
 import dev.opensource.attenora.ui.common.FgDivider
 import dev.opensource.attenora.ui.common.FgGroup
@@ -53,6 +54,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         mutableStateOf(isAccessibilityServiceEnabled(context, AttenoraAccessibilityService::class.java))
     }
     var notifGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
+    // Enabled in Accessibility but not bound in this process: the setting is a
+    // claim, not proof. See MonitorWatchdog for why this happens.
+    var monitorStalled by remember { mutableStateOf(MonitorWatchdog.isStalled(context)) }
 
     // Re-read on resume: the user leaves Settings to grant a permission in
     // system settings, and we want the list to be correct when they come back.
@@ -65,6 +69,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     context, AttenoraAccessibilityService::class.java
                 )
                 notifGranted = hasNotificationPermission(context)
+                monitorStalled = MonitorWatchdog.isStalled(context)
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -85,8 +90,9 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
 
     // Permissions is auto-hiding: once everything is granted the row is simply
-    // gone, and it comes back by itself the moment something is revoked.
-    val allGranted = usageGranted && serviceOn && notifGranted
+    // gone, and it comes back by itself the moment something is revoked - or
+    // stops answering while still being listed as granted.
+    val allGranted = usageGranted && serviceOn && !monitorStalled && notifGranted
 
     // The footer sits at the bottom of the screen, not tucked under the last
     // row: the list scrolls inside the space above it, so the brand line is

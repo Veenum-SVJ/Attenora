@@ -136,6 +136,17 @@
             </intent-filter>
         </service>
 
+        <!--
+            Fifteen-minute heartbeat that heals the App monitor when the vendor
+            kills it while the phone is idle (see MonitorWatchdog). JobScheduler
+            is the only mechanism the system will wake a dead process for
+            without polling or a foreground service.
+        -->
+        <service
+            android:name=".enforcement.MonitorHeartbeatService"
+            android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+
         <receiver
             android:name=".enforcement.ScheduleAlarmReceiver"
             android:exported="false" />

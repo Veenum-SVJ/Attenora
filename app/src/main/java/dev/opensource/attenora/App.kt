@@ -14,10 +14,12 @@ import dev.opensource.attenora.domain.CategoryClassifier
 import dev.opensource.attenora.enforcement.Alarms
 import dev.opensource.attenora.enforcement.EnforcementManager
 import dev.opensource.attenora.enforcement.FocusSession
+import dev.opensource.attenora.enforcement.MonitorWatchdog
 import dev.opensource.attenora.enforcement.Notifier
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -70,6 +72,19 @@ class AttenoraApplication : Application() {
         val t0 = android.os.SystemClock.elapsedRealtime()
         container = AppContainer(this)
         android.util.Log.d("FGSTART", "app container init: ${android.os.SystemClock.elapsedRealtime() - t0}ms")
+
+        // The App monitor can be "on" and dead at the same time - see
+        // MonitorWatchdog. Every process start is a chance to notice and heal,
+        // and arming the heartbeat here also restores it after a force-stop.
+        MonitorWatchdog.markProcessStart()
+        MonitorWatchdog.schedule(this)
+        container.scope.launch {
+            // The accessibility manager may be binding a healthy service right
+            // now; checking before it settles would repair something that is
+            // not broken.
+            delay(MonitorWatchdog.settleRemainingMs())
+            MonitorWatchdog.check(this@AttenoraApplication, "app")
+        }
     }
 }
 

@@ -62,6 +62,13 @@ class SettingsRepository(private val context: Context) {
          */
         val A11Y_EVER_ON = booleanPreferencesKey("a11y_ever_on")
 
+        /**
+         * When the last "monitor stopped" notification was posted. The repair
+         * watchdog can fail every 15 minutes on a phone missing the secure
+         * settings grant; this keeps that to one alert per half day.
+         */
+        val MONITOR_NOTIFIED_AT = longPreferencesKey("monitor_notified_at")
+
         val ASSISTANT_ON = booleanPreferencesKey("assistant_on")
         val TOTAL10_ON = booleanPreferencesKey("total10_on")
         val FIVE_MIN_WARN = booleanPreferencesKey("five_min_warn")
@@ -123,6 +130,10 @@ class SettingsRepository(private val context: Context) {
     val iconAccent: Flow<Int> = context.dataStore.data.map { it[Keys.ICON_ACCENT] ?: 0 }
     /** True once the App monitor service has connected at least once. */
     val a11yEverOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.A11Y_EVER_ON] ?: false }
+    /** Last "monitor stopped" notification, epoch millis. See MonitorWatchdog. */
+    val monitorNotifiedAt: Flow<Long> = context.dataStore.data.map {
+        it[Keys.MONITOR_NOTIFIED_AT] ?: 0L
+    }
 
     val assistantOn: Flow<Boolean> = context.dataStore.data.map { it[Keys.ASSISTANT_ON] ?: false }
     val total10On: Flow<Boolean> = context.dataStore.data.map { it[Keys.TOTAL10_ON] ?: false }
@@ -157,6 +168,9 @@ class SettingsRepository(private val context: Context) {
 
     /** Latches the first App monitor connection. See [a11yEverOn]. */
     suspend fun markA11yEverOn() = context.dataStore.edit { it[Keys.A11Y_EVER_ON] = true }
+
+    suspend fun setMonitorNotifiedAt(time: Long) =
+        context.dataStore.edit { it[Keys.MONITOR_NOTIFIED_AT] = time }
 
     suspend fun setBlockAllUntil(time: Long) = context.dataStore.edit { it[Keys.BLOCK_ALL_UNTIL] = time }
     suspend fun setOnboardingDone(on: Boolean) = context.dataStore.edit { it[Keys.ONBOARDING_DONE] = on }

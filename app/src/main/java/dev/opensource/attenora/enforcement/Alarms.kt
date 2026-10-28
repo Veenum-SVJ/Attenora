@@ -171,6 +171,9 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val app = context.applicationContext as? AttenoraApplication ?: return
         val container = app.container
+        // An alarm is one of the few things that wakes a killed process. Reuse
+        // it to notice and heal a monitor the vendor killed overnight.
+        MonitorWatchdog.check(context, "alarm")
         val pending = goAsync()
         container.scope.launch {
             try {
@@ -268,30 +271,25 @@ class BootReceiver : BroadcastReceiver() {
                     container.settings.weeklyDay.first(),
                     container.settings.weeklyMinute.first()
                 )
+                // The heartbeat is persisted, but arming it here costs nothing
+                // and covers a job the system dropped while the app was
+                // force-stopped or updated.
+                MonitorWatchdog.schedule(context)
                 // HyperOS (and some other vendors) revoke accessibility for
                 // sideloaded apps on reboot, silently killing limit blocking
                 // and the reel counter. If the monitor had ever worked and is
                 // now gone, say so instead of letting it die quietly.
                 if (container.settings.a11yEverOn.first() &&
-                    !isAccessibilityServiceEnabled(context)
+                    !MonitorWatchdog.isEnabled(context)
                 ) {
                     Notifier.onMonitorDisabled(context)
                 }
+                // Application.onCreate already schedules a check once the
+                // process has settled, which covers boot as well: this receiver
+                // is what started that process.
             } finally {
                 pending.finish()
             }
-        }
-    }
-
-    /** True when the App monitor is among the system's enabled services. */
-    private fun isAccessibilityServiceEnabled(context: Context): Boolean {
-        val expected = android.content.ComponentName(context, AttenoraAccessibilityService::class.java)
-        val enabled = android.provider.Settings.Secure.getString(
-            context.contentResolver,
-            android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-        return enabled.split(':').any {
-            android.content.ComponentName.unflattenFromString(it) == expected
         }
     }
 }

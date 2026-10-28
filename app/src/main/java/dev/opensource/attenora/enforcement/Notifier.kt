@@ -29,6 +29,7 @@ object Notifier {
     private const val ID_TOTAL10 = 4200
     private const val ID_FOCUS = 4300
     private const val ID_MONITOR_OFF = 4400
+    private const val ID_MONITOR_STOPPED = 4500
 
     @Volatile private var lastTotal10At = 0L
     private const val TOTAL10_INTERVAL_MS = 10 * 60_000L
@@ -107,6 +108,28 @@ object Notifier {
             .setContentTitle("App monitor is off")
             .setContentText("Limit blocking and the reel counter are paused. " +
                 "Tap to turn the App monitor back on.")
+            .setContentIntent(pi)
+            .setAutoCancel(true)
+            .build())
+    }
+
+    /**
+     * The monitor is enabled in Accessibility but nothing is bound, and we are
+     * not allowed to rewrite the setting ourselves (WRITE_SECURE_SETTINGS is
+     * missing). Tapping opens Accessibility, where toggling Attenora off and on
+     * rebinds it - the same thing the repair would have done.
+     */
+    fun onMonitorStopped(context: Context) {
+        val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val pi = PendingIntent.getActivity(
+            context, 0, intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        post(context, ID_MONITOR_STOPPED, base(context, CHANNEL_ALERTS)
+            .setContentTitle("App monitor stopped")
+            .setContentText("Limits and the reel counter are paused. " +
+                "Tap, then switch Attenora off and on again.")
             .setContentIntent(pi)
             .setAutoCancel(true)
             .build())

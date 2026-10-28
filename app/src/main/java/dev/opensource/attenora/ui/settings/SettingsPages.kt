@@ -67,6 +67,7 @@ import dev.opensource.attenora.data.SettingsRepository
 import dev.opensource.attenora.data.ThemeMode
 import dev.opensource.attenora.enforcement.Alarms
 import dev.opensource.attenora.enforcement.AttenoraAccessibilityService
+import dev.opensource.attenora.enforcement.MonitorWatchdog
 import dev.opensource.attenora.ui.limits.rememberChallengeGate
 import dev.opensource.attenora.util.Grayscale
 import dev.opensource.attenora.ui.common.FgDivider
@@ -88,6 +89,7 @@ import dev.opensource.attenora.ui.theme.fg
 import dev.opensource.attenora.util.LauncherIcons
 import dev.opensource.attenora.util.exportCsv
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -373,6 +375,8 @@ private fun HourChoiceDialog(current: Int, onDismiss: () -> Unit, onPick: (Int) 
 @Composable
 fun PermissionsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val container = LocalAppContainer.current
+    val scope = rememberCoroutineScope()
     var usageGranted by remember { mutableStateOf(dev.opensource.attenora.ui.common.hasUsageAccess(context)) }
     var serviceOn by remember {
         mutableStateOf(
@@ -381,7 +385,30 @@ fun PermissionsScreen(onBack: () -> Unit) {
             )
         )
     }
+    // "Enabled" only means the setting lists us. This is the half that can be
+    // true while nothing is actually running (see MonitorWatchdog).
+    var monitorStalled by remember { mutableStateOf(MonitorWatchdog.isStalled(context)) }
     var notifGranted by remember { mutableStateOf(hasNotificationPermission(context)) }
+
+    fun refresh() {
+        usageGranted = dev.opensource.attenora.ui.common.hasUsageAccess(context)
+        serviceOn = dev.opensource.attenora.ui.common.isAccessibilityServiceEnabled(
+            context, AttenoraAccessibilityService::class.java
+        )
+        monitorStalled = MonitorWatchdog.isStalled(context)
+        notifGranted = hasNotificationPermission(context)
+    }
+
+    // The user may leave for system settings and come back; and a vendor kill
+    // can happen while this page is open. Either way the row must be re-read.
+    val lifecycleOwner = androidx.compose.ui.platform.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) refresh()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
 
     SettingsPage("Permissions", onBack) {
         FgGroup(Modifier.padding(horizontal = 16.dp)) {
@@ -389,8 +416,33 @@ fun PermissionsScreen(onBack: () -> Unit) {
                 context.startActivity(Intent(AndroidSettings.ACTION_USAGE_ACCESS_SETTINGS))
             }
             FgDivider(inset = 20.dp)
-            PermissionRow("Attenora accessibility (blocking, websites, in-app)", serviceOn, "Open") {
-                openAccessibilitySettings(context, AttenoraAccessibilityService::class.java)
+            PermissionRow(
+                title = "Attenora accessibility (blocking, websites, in-app)",
+                granted = serviceOn,
+                actionLabel = if (monitorStalled) "Restart" else "Open",
+                note = if (monitorStalled) {
+                    "On, but not answering. Limits and the reel counter are paused, " +
+                        "usually after the phone was locked for a while."
+                } else null,
+                warn = monitorStalled
+            ) {
+                if (!monitorStalled) {
+                    // A normal grant: open the system page and let the user flip it.
+                    openAccessibilitySettings(context, AttenoraAccessibilityService::class.java)
+                } else {
+                    // Try to force the rebind ourselves first (needs the adb
+                    // grant); fall back to the toggle, which always works.
+                    MonitorWatchdog.check(context, "settings")
+                    scope.launch {
+                        delay(1_500)
+                        refresh()
+                        if (!container.a11yConnected && serviceOn) {
+                            openAccessibilitySettings(
+                                context, AttenoraAccessibilityService::class.java
+                            )
+                        }
+                    }
+                }
             }
             if (android.os.Build.VERSION.SDK_INT >= 33) {
                 FgDivider(inset = 20.dp)
