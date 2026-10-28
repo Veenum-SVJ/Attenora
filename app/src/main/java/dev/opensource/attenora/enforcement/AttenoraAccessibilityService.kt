@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
+import android.os.PowerManager
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -64,17 +65,51 @@ class AttenoraAccessibilityService : AccessibilityService() {
     private var lastForeground: String? = null
     private val lastSeen = HashMap<String, Long>(8)
 
+    /**
+     * Is the phone genuinely in use right now — display lit *and* unlocked?
+     *
+     * This is the app's only trustworthy answer to "is anyone actually using
+     * the phone". The screen-off broadcast below is still the fast path, but it
+     * is a single trigger in a service that can be re-bound, so every decision
+     * that could turn into counted time asks this instead of assuming.
+     *
+     * The keyguard half matters: a phone can be lit with the lock screen up
+     * (someone brushes the sensor), and the app behind it is not in use.
+     *
+     * Cached briefly: the call crosses into the power service, and content
+     * changes can arrive many times a second. 1.5 s is still far shorter than
+     * any session's worth worrying about.
+     */
+    private var screenCheckAt = 0L
+    private var screenOnCached = true
+
+    private fun isUsable(): Boolean {
+        val now = System.currentTimeMillis()
+        if (now - screenCheckAt >= SCREEN_STATE_CACHE_MS) {
+            screenCheckAt = now
+            screenOnCached = runCatching {
+                val power = getSystemService(PowerManager::class.java)
+                val keyguard = getSystemService(android.app.KeyguardManager::class.java)
+                power?.isInteractive == true && keyguard?.isKeyguardLocked != true
+            }.getOrDefault(true) // if the answer is unavailable, keep counting
+        }
+        return screenOnCached
+    }
+
     // --- grayscale state (Curbox-style per-app monochrome filter)
     private val screenOffReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
-            restoreIfOurs() // never leave the display stuck monochrome behind a locked screen
-            stopLimitWatch() // nothing is foreground while the screen is off
-            dropReelOverlay() // …and nothing should keep a count over the lock screen
-            hidePill() // …nor a countdown ticking over it
-            // Locking the phone with an app open ends that foreground stretch:
-            // live usage stops accruing and a running session pauses instead
-            // of burning against the wall clock while the screen is dark.
+            screenCheckAt = System.currentTimeMillis()
+            screenOnCached = false
+            Diag.d("screen off")
+            // Stopping the count comes first and on its own, before any window
+            // teardown: a failing overlay call must never leave usage or a
+            // session running behind a locked screen.
             container.enforcement.onForeground(null)
+            stopLimitWatch() // nothing is foreground while the screen is off
+            runCatching { restoreIfOurs() } // never leave the display stuck monochrome behind a locked screen
+            runCatching { dropReelOverlay() } // …and nothing should keep a count over the lock screen
+            runCatching { hidePill() } // …nor a countdown ticking over it
         }
     }
 
@@ -83,17 +118,24 @@ class AttenoraAccessibilityService : AccessibilityService() {
      * the app that was already open, so re-derive the foreground from the
      * window actually on screen — otherwise usage tracking and a paused
      * session stay frozen while the user is using the app again.
+     *
+     * Fires for both "screen lit" and "actually unlocked": waking to the lock
+     * screen must not nominate the app behind the keyguard as in use, and the
+     * unlock that follows has to be picked up even when it sends no window event.
      */
     private val screenOnReceiver = object : android.content.BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            screenCheckAt = 0L // re-ask the power/keyguard services
             syncForegroundFromWindow()
         }
     }
 
     private fun syncForegroundFromWindow() {
         mainHandler.post {
+            if (!isUsable()) return@post
             val pkg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
-                ?.takeIf { it.isNotEmpty() && it != packageName } ?: return@post
+                ?.takeIf { it.isNotEmpty() && it != packageName && it != SYSTEM_UI_PACKAGE }
+                ?: return@post
             lastForeground = pkg
             container.enforcement.onForeground(pkg)
             updateCountdown(pkg)
@@ -151,6 +193,15 @@ class AttenoraAccessibilityService : AccessibilityService() {
     private val limitWatcher: Runnable = Runnable {
         val pkg = watchPkg ?: return@Runnable
         container.scope.launch {
+            // Self-heal: a session only runs for the app the tracker believes
+            // is foreground, so a pause that should not have happened would
+            // leave the limit unenforced — the reverse of the bug this release
+            // fixes. If the app really is in front on a usable screen, say so
+            // again before deciding.
+            val active = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
+            if (active == pkg && isUsable() && container.usage.currentForeground() != pkg) {
+                container.enforcement.onForeground(pkg)
+            }
             val decision = runCatching { container.enforcement.evaluate(pkg) }.getOrNull()
                 ?: return@launch
             mainHandler.post {
@@ -195,6 +246,8 @@ class AttenoraAccessibilityService : AccessibilityService() {
         if (now - lastLimitRecheckAt < LIMIT_RECHECK_MS) return
         lastLimitRecheckAt = now
         if (!container.enforcement.hasLimitFor(pkg)) return
+        // Nothing accrues or resumes behind a dark/locked screen; see [isUsable].
+        if (!isUsable()) return
         container.scope.launch {
             runCatching { container.enforcement.evaluate(pkg) }
         }
@@ -211,6 +264,7 @@ class AttenoraAccessibilityService : AccessibilityService() {
      */
     private fun recheckForeground() {
         mainHandler.post {
+            if (!isUsable()) return@post
             val pkg = runCatching { rootInActiveWindow?.packageName?.toString() }.getOrNull()
                 ?: return@post
             if (pkg == packageName || Allowlist.isAllowlisted(pkg)) return@post
@@ -317,17 +371,27 @@ class AttenoraAccessibilityService : AccessibilityService() {
             registerReceiver(screenOffReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
         }
         runCatching {
-            registerReceiver(screenOnReceiver, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_ON))
+            registerReceiver(
+                screenOnReceiver,
+                android.content.IntentFilter().apply {
+                    addAction(android.content.Intent.ACTION_SCREEN_ON)
+                    // Sent once the keyguard is actually dismissed; the only
+                    // reliable "now it is really in use" signal.
+                    addAction(android.content.Intent.ACTION_USER_PRESENT)
+                }
+            )
         }
         // If the service bound after the last window event (e.g. enabled
         // mid-session from Settings), lastForeground is still null — ask the
         // window manager what's on screen right now so evaluate/grant/pill
         // don't all wait for the next app switch (emulator repro, 2026-10-18).
+        // Binding while the phone is locked must not nominate the app behind
+        // the keyguard as "in use".
         val current = runCatching { rootInActiveWindow?.packageName?.toString() }
             .getOrNull()
-            ?.takeIf { it != packageName }
+            ?.takeIf { it != packageName && it != SYSTEM_UI_PACKAGE }
             ?: lastForeground
-        current?.let {
+        if (isUsable()) current?.let {
             container.enforcement.onForeground(it)
             updateCountdown(it)
             applyGrayscale(it)
@@ -340,11 +404,29 @@ class AttenoraAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val e = event ?: return
         val pkg = e.packageName?.toString() ?: return
+        if (!isUsable()) {
+            // A dark or locked screen means nothing is in the foreground, no
+            // matter which app the last event came from. Re-assert it on every
+            // event: the broadcast above can be missed when the service is
+            // re-bound, and a stale event used to resume a paused session — the
+            // stopwatch then ran to zero in the user's pocket.
+            container.enforcement.onForeground(null)
+            stopLimitWatch()
+            return
+        }
         if (pkg == packageName) {
             // Attenora is never in the grayscale list, so coming back to our
             // own UI has to lift a filter a previous app turned on. Everything
             // else below deliberately ignores self events.
             applyGrayscale(pkg)
+            return
+        }
+        if (pkg == SYSTEM_UI_PACKAGE) {
+            // The shade, a heads-up banner, the volume panel: SystemUI draws
+            // *over* the app the user is still in. Counting that as an app
+            // switch paused the session underneath and left it paused (it was
+            // only ever un-paused by the unconditional resume that let a dark
+            // session burn — the bug this release fixes).
             return
         }
 
@@ -1356,6 +1438,11 @@ class AttenoraAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        /** How long the "is the phone in use" answer may be reused. See isUsable(). */
+        private const val SCREEN_STATE_CACHE_MS = 1_500L
+
+        /** Draws the shade, heads-up banners and the volume panel over a running app. */
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val MAX_NODES_ADDRESS = 250
         private const val MAX_NODES_DETECT = 500
         private const val MIN_CHECK_INTERVAL_MS = 1_200L

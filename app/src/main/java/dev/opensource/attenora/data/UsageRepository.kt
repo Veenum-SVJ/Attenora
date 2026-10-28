@@ -3,6 +3,7 @@ package dev.opensource.attenora.data
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.os.PowerManager
 import dev.opensource.attenora.domain.ResetEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -39,6 +40,8 @@ class UsageRepository(
         private const val MIN_INTERVAL_MS = 500
         private const val FIRST_RUN_LOOKBACK_MS = 24L * 60 * 60 * 1000
         private const val RETENTION_DAYS = 90L
+        /** How long the "is the screen lit" answer may be reused. */
+        private const val SCREEN_STATE_CACHE_MS = 1_000L
 
         /** element_usage key under which website visits are stored (per domain). */
         const val WEB_ELEMENT = "__site__"
@@ -66,8 +69,30 @@ class UsageRepository(
     }
 
     /** Live in-progress session time for [pkg] on top of the persisted rollup. */
-    fun liveMs(pkg: String, now: Long = clock()): Long =
-        if (currentPkg == pkg) (now - currentSinceMs).coerceAtLeast(0L) else 0L
+    fun liveMs(pkg: String, now: Long = clock()): Long {
+        if (currentPkg != pkg) return 0L
+        // A dark screen is never usage. Closing the segment on ACTION_SCREEN_OFF
+        // is the fast path; this is the backstop for when that trigger is
+        // missed (a re-bound service, an OEM quirk), so pocket time can never
+        // reach a daily limit.
+        if (!screenOn()) return 0L
+        return (now - currentSinceMs).coerceAtLeast(0L)
+    }
+
+    @Volatile private var screenCheckAt = 0L
+    @Volatile private var screenOnCached = true
+
+    /** [PowerManager.isInteractive] with a one-second cache; a decision may ask often. */
+    private fun screenOn(): Boolean {
+        val now = clock()
+        if (now - screenCheckAt >= SCREEN_STATE_CACHE_MS) {
+            screenCheckAt = now
+            screenOnCached = runCatching {
+                context.getSystemService(PowerManager::class.java)?.isInteractive == true
+            }.getOrDefault(true)
+        }
+        return screenOnCached
+    }
 
     suspend fun usedMsToday(pkg: String, now: Long = clock()): Long {
         val day = ResetEngine.dayKey(now, resetHourProvider())
@@ -171,6 +196,21 @@ class UsageRepository(
                         }
                         openPkg = null
                     }
+                }
+                // Turning the display off does not pause an Android activity,
+                // so a RESUMED with no PAUSE behind it would credit the whole
+                // dark gap (capped only by MAX_INTERVAL_MS). These system
+                // events end the interval exactly as a pause does, which is
+                // what keeps a locked phone out of the daily total.
+                UsageEvents.Event.SCREEN_NON_INTERACTIVE,
+                UsageEvents.Event.DEVICE_SHUTDOWN -> {
+                    val prev = openPkg ?: continue
+                    val dur = (stamp - openAt).coerceIn(0L, MAX_INTERVAL_MS)
+                    if (dur >= MIN_INTERVAL_MS) {
+                        bucket(prev, openAt)[0] += dur
+                        creditHourly(prev, openAt, dur)
+                    }
+                    openPkg = null
                 }
             }
         }

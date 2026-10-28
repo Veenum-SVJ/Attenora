@@ -179,7 +179,13 @@ class EnforcementManager(
 
         // The target is on screen again: any time it spent paused is handed
         // back to its session before the decision below reads the window.
-        runCatching { resumeSessionsFor(pkg, now) }
+        // Only for the app that is genuinely in the foreground: a stale event
+        // (a content change landing after the screen went dark, a watcher armed
+        // before the lock) used to resume the session anyway, and the stopwatch
+        // then ran to zero in the user's pocket.
+        if (usage.currentForeground() == pkg) {
+            runCatching { resumeSessionsFor(pkg, now) }
+        }
 
         val decision = decisionFor(pkg, now)
 
