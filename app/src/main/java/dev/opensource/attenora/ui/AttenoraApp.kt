@@ -59,6 +59,7 @@ sealed interface Pushed {
     data object Settings : Pushed
     data class AddLimit(val pkg: String? = null) : Pushed
     data object BlockKeywords : Pushed
+    data object AppHealth : Pushed
     data class AppDetail(val pkg: String) : Pushed
 }
 
@@ -198,7 +199,8 @@ fun AttenoraApp() {
                     )
                     tab == 0 -> UsageStatsScreen(
                         query = searchQuery,
-                        onOpenApp = { push(Pushed.AppDetail(it)) }
+                        onOpenApp = { push(Pushed.AppDetail(it)) },
+                        onOpenHealth = { push(Pushed.AppHealth) }
                     )
                     tab == 1 -> UsageLimitsScreen(
                         query = searchQuery,
@@ -357,6 +359,7 @@ private fun PushedContent(
         Pushed.Settings -> SettingsScreen(onBack = onPop)
         is Pushed.AddLimit -> AddLimitScreen(onBack = onPop, initialPkg = dest.pkg)
         Pushed.BlockKeywords -> BlockKeywordsScreen(onBack = onPop)
+        Pushed.AppHealth -> dev.opensource.attenora.ui.settings.AppHealthScreen(onBack = onPop)
         is Pushed.AppDetail -> dev.opensource.attenora.ui.stats.AppDetailScreen(
             pkg = dest.pkg,
             onBack = onPop,

@@ -46,6 +46,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import dev.opensource.attenora.enforcement.AttenoraAccessibilityService
 import dev.opensource.attenora.ui.common.FgCard
 import dev.opensource.attenora.ui.common.FgIcon
+import dev.opensource.attenora.ui.common.KeepRunningStep
 import dev.opensource.attenora.ui.common.LocalAccentColor
 import dev.opensource.attenora.ui.common.hasNotificationPermission
 import dev.opensource.attenora.ui.common.hasUsageAccess
@@ -56,7 +57,7 @@ import dev.opensource.attenora.ui.icons.FgIcons
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-private const val TOTAL_STEPS = 4
+private const val TOTAL_STEPS = 5
 
 @Composable
 fun OnboardingScreen() {
@@ -116,7 +117,8 @@ fun OnboardingScreen() {
             2 -> NotificationStep(notifGranted) {
                 requestNotificationPermission(context)
             }
-            else -> MonitorStep(monitorOn) { showDisclosure = true }
+            3 -> MonitorStep(monitorOn) { showDisclosure = true }
+            else -> KeepRunningStep()
         }
 
         Spacer(Modifier.weight(1f, fill = false))
@@ -136,7 +138,7 @@ fun OnboardingScreen() {
             } else {
                 Button(onClick = {
                     scope.launch { container.settings.setOnboardingDone(true) }
-                }) { Text(if (monitorOn) "Start using Attenora" else "Skip for now") }
+                }) { Text("Start using Attenora") }
             }
         }
     }

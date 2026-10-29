@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -30,8 +31,11 @@ import dev.opensource.attenora.ui.common.NavRow
 import dev.opensource.attenora.ui.common.PageHeader
 import dev.opensource.attenora.ui.common.hasNotificationPermission
 import dev.opensource.attenora.ui.common.hasUsageAccess
+import dev.opensource.attenora.ui.common.healthCopy
+import dev.opensource.attenora.ui.common.healthIssue
 import dev.opensource.attenora.ui.common.isAccessibilityServiceEnabled
 import dev.opensource.attenora.ui.icons.FgIcons
+import dev.opensource.attenora.ui.theme.fg
 
 /** Row leading padding (20) + icon (22) + gap (14) — where a divider should start. */
 internal val RowInset = 56.dp
@@ -82,6 +86,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     when (page) {
         "tracking" -> { TrackingSettingsScreen(onBack = { page = null }); return }
         "permissions" -> { PermissionsScreen(onBack = { page = null }); return }
+        "health" -> { AppHealthScreen(onBack = { page = null }); return }
         "theme" -> { ThemeSettingsScreen(onBack = { page = null }); return }
         "tools" -> { FocusToolsScreen(onBack = { page = null }); return }
         "web" -> { WebsiteBlockingScreen(onBack = { page = null }); return }
@@ -93,6 +98,14 @@ fun SettingsScreen(onBack: () -> Unit) {
     // gone, and it comes back by itself the moment something is revoked - or
     // stops answering while still being listed as granted.
     val allGranted = usageGranted && serviceOn && !monitorStalled && notifGranted
+
+    // A stalled monitor is "on" in the OS but not connected here, so it has to
+    // be reported as disconnected rather than as enabled.
+    val issue = healthIssue(
+        usageGranted = usageGranted,
+        monitorEnabled = serviceOn,
+        monitorConnected = serviceOn && !monitorStalled
+    )
 
     // The footer sits at the bottom of the screen, not tucked under the last
     // row: the list scrolls inside the space above it, so the brand line is
@@ -107,6 +120,19 @@ fun SettingsScreen(onBack: () -> Unit) {
             Spacer(Modifier.height(4.dp))
             FgGroup(Modifier.padding(horizontal = 16.dp)) {
                 NavRow("Usage Limits and Tracking", { page = "tracking" }, icon = FgIcons.Gauge)
+                FgDivider(inset = RowInset)
+                NavRow(
+                    title = "App health",
+                    onClick = { page = "health" },
+                    subtitle = issue?.let { healthCopy(it).title },
+                    value = if (issue == null) "OK" else "Fix",
+                    valueColor = if (issue == null) {
+                        MaterialTheme.fg.success
+                    } else {
+                        MaterialTheme.fg.warning
+                    },
+                    icon = FgIcons.Shield
+                )
                 if (!allGranted) {
                     FgDivider(inset = RowInset)
                     NavRow("Permissions", { page = "permissions" }, icon = FgIcons.Lock)

@@ -546,6 +546,7 @@ fun NavRow(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     value: String? = null,
+    valueColor: Color = MaterialTheme.colorScheme.onSurfaceVariant,
     icon: androidx.compose.ui.graphics.vector.ImageVector? = null
 ) {
     Row(
@@ -573,7 +574,7 @@ fun NavRow(
             Text(
                 value,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = valueColor
             )
             Spacer(Modifier.width(6.dp))
         }

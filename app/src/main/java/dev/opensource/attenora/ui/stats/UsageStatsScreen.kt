@@ -60,6 +60,7 @@ import dev.opensource.attenora.ui.common.AppIcon
 import dev.opensource.attenora.ui.common.FgCard
 import dev.opensource.attenora.ui.common.FgDivider
 import dev.opensource.attenora.ui.common.FirstRunHint
+import dev.opensource.attenora.ui.common.HealthBanner
 import dev.opensource.attenora.ui.common.FgIcon
 import dev.opensource.attenora.ui.common.LocalAppContainer
 import dev.opensource.attenora.ui.common.PageHeader
@@ -95,7 +96,7 @@ private data class AppStat(val pkg: String, val ms: Long, val launches: Int)
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
+fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit, onOpenHealth: () -> Unit) {
     val container = LocalAppContainer.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -294,6 +295,16 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit) {
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
     ) {
         item { PageHeader("Usage Stats") }
+
+        // Shown only when something is actually broken, so a healthy app keeps
+        // the top of Home clean. Not dismissible on purpose: a dismissed warning
+        // would leave the screen looking healthy while nothing is enforced.
+        item {
+            HealthBanner(
+                onOpen = onOpenHealth,
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+            )
+        }
 
         item {
             FirstRunHint(
