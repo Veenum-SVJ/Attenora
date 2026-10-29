@@ -166,6 +166,27 @@ object FgIcons {
         roundRect(13.5f, 13.5f, 7.5f, 7.5f, 1.7f)
     }
 
+    /** Habits tab: a ringed check — one day kept. */
+    val CircleCheck = strokes("circle_check") {
+        circle(12f, 12f, 8.5f)
+        moveTo(8.2f, 12.2f); lineTo(11f, 15f); lineTo(16f, 9.4f)
+    }
+
+    /**
+     * Routines: three steps with their own markers, the last one ticked — the
+     * shape of "work through these in order" without borrowing a checkbox grid.
+     */
+    val Steps = strokes("steps") {
+        circle(5f, 6.5f, 2.2f)
+        circle(5f, 17.5f, 2.2f)
+        moveTo(10f, 6.5f); lineTo(20f, 6.5f)
+        moveTo(10f, 17.5f); lineTo(20f, 17.5f)
+    }
+
+    val Minus = strokes("minus") {
+        moveTo(5f, 12f); lineTo(19f, 12f)
+    }
+
     val Home = strokes("home") {
         moveTo(4f, 11f); lineTo(12f, 4f); lineTo(20f, 11f)
         moveTo(6.5f, 9.5f); lineTo(6.5f, 19.5f); lineTo(17.5f, 19.5f); lineTo(17.5f, 9.5f)

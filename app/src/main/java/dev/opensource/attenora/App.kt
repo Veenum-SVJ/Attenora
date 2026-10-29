@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.opensource.attenora.data.AppDatabase
 import dev.opensource.attenora.data.BackupRepository
 import dev.opensource.attenora.data.Category
+import dev.opensource.attenora.data.HabitRepository
 import dev.opensource.attenora.data.SettingsRepository
 import dev.opensource.attenora.data.UsageRepository
 import dev.opensource.attenora.domain.CategoryClassifier
@@ -63,6 +64,39 @@ private val MIGRATION_4_5 = object : Migration(4, 5) {
     }
 }
 
+/**
+ * v5 → v6: the habits tab. Four new tables, no changes to anything the
+ * tracker already stores — usage history, limits and schedules are untouched.
+ */
+private val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `habits` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, " +
+                "`reason` TEXT NOT NULL, `mode` TEXT NOT NULL, `daysMask` INTEGER NOT NULL, " +
+                "`createdAtMs` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `habit_entries` (" +
+                "`habitId` INTEGER NOT NULL, `day` TEXT NOT NULL, `count` INTEGER NOT NULL, " +
+                "PRIMARY KEY(`habitId`, `day`))"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `habit_steps` (" +
+                "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `habitId` INTEGER NOT NULL, " +
+                "`label` TEXT NOT NULL, `sortOrder` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_habit_steps_habitId` ON `habit_steps` (`habitId`)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `habit_step_checks` (" +
+                "`stepId` INTEGER NOT NULL, `day` TEXT NOT NULL, " +
+                "PRIMARY KEY(`stepId`, `day`))"
+        )
+    }
+}
+
 class AttenoraApplication : Application() {
     lateinit var container: AppContainer
         private set
@@ -97,7 +131,7 @@ class AppContainer(val app: Context) {
     private val containerInitT0 = android.os.SystemClock.elapsedRealtime()
 
     val db: AppDatabase = Room.databaseBuilder(app, AppDatabase::class.java, "attenora.db")
-        .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
         .fallbackToDestructiveMigration()
         .build()
 
@@ -110,6 +144,9 @@ class AppContainer(val app: Context) {
         private set
 
     val backup = BackupRepository(db)
+
+    /** Habits tab: the only user-typed data in the app. */
+    val habits = HabitRepository(db, todayKey = { usage.todayKey() })
 
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 

@@ -86,6 +86,36 @@ class BackupRepository(private val db: AppDatabase) {
                 put(JSONObject().put("pkg", r.packageName).put("element", r.element).put("enabled", r.enabled))
             }
         })
+        // Habits are the only data the user typed by hand, so a backup that
+        // skipped them would lose strictly more than it saved.
+        root.put("habits", JSONArray().apply {
+            db.habitDao().all().forEach { h ->
+                put(
+                    JSONObject()
+                        .put("id", h.id).put("name", h.name).put("reason", h.reason)
+                        .put("mode", h.mode).put("days", h.daysMask)
+                        .put("createdAt", h.createdAtMs).put("order", h.sortOrder)
+                )
+            }
+        })
+        root.put("habitEntries", JSONArray().apply {
+            db.habitEntryDao().all().forEach { e ->
+                put(JSONObject().put("habitId", e.habitId).put("day", e.day).put("count", e.count))
+            }
+        })
+        root.put("habitSteps", JSONArray().apply {
+            db.habitStepDao().all().forEach { s ->
+                put(
+                    JSONObject().put("id", s.id).put("habitId", s.habitId)
+                        .put("label", s.label).put("order", s.sortOrder)
+                )
+            }
+        })
+        root.put("habitStepChecks", JSONArray().apply {
+            db.habitStepCheckDao().all().forEach { c ->
+                put(JSONObject().put("stepId", c.stepId).put("day", c.day))
+            }
+        })
         return root.toString(2)
     }
 
@@ -109,6 +139,10 @@ class BackupRepository(private val db: AppDatabase) {
         db.reelCountDao().deleteAll()
         db.sessionGrantDao().deleteAll()
         db.blockEventDao().clear()
+        db.habitStepCheckDao().deleteAll()
+        db.habitStepDao().deleteAll()
+        db.habitEntryDao().deleteAll()
+        db.habitDao().deleteAll()
         db.metaDao().clear()
 
         root.optJSONArray("dailyUsage")?.let { arr ->
@@ -199,6 +233,49 @@ class BackupRepository(private val db: AppDatabase) {
                 db.elementRuleDao().upsert(
                     ElementRule(o.getString("pkg"), o.getString("element"), o.optBoolean("enabled", true))
                 )
+            }
+        }
+        // Files written before v1.3 simply have no habit arrays; optJSONArray
+        // returns null and the restore is complete without them.
+        root.optJSONArray("habits")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                db.habitDao().upsert(
+                    Habit(
+                        id = o.optLong("id"),
+                        name = o.getString("name"),
+                        reason = o.optString("reason"),
+                        mode = o.optString("mode", HabitMode.CHECK),
+                        daysMask = o.optInt("days", 0x7F),
+                        createdAtMs = o.optLong("createdAt", System.currentTimeMillis()),
+                        sortOrder = o.optInt("order")
+                    )
+                )
+            }
+        }
+        root.optJSONArray("habitSteps")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                db.habitStepDao().insert(
+                    HabitStep(
+                        id = o.optLong("id"),
+                        habitId = o.getLong("habitId"),
+                        label = o.getString("label"),
+                        sortOrder = o.optInt("order")
+                    )
+                )
+            }
+        }
+        root.optJSONArray("habitEntries")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                db.habitEntryDao().set(o.getLong("habitId"), o.getString("day"), o.getInt("count"))
+            }
+        }
+        root.optJSONArray("habitStepChecks")?.let { arr ->
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                db.habitStepCheckDao().check(HabitStepCheck(o.getLong("stepId"), o.getString("day")))
             }
         }
         Unit

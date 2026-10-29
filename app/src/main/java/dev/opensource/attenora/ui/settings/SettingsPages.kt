@@ -870,8 +870,9 @@ fun DataScreen(onBack: () -> Unit) {
                 )
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    "Every limit, schedule, blocked site and day of usage history is " +
-                        "deleted from this device. There is no cloud copy — this cannot be undone.",
+                    "Every limit, schedule, blocked site, habit and day of usage history " +
+                        "is deleted from this device. There is no cloud copy — this cannot " +
+                        "be undone.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -889,7 +890,7 @@ fun DataScreen(onBack: () -> Unit) {
             title = { Text("Erase all data?") },
             text = {
                 Text(
-                    "Every limit, schedule, blocked site and day of usage history " +
+                    "Every limit, schedule, blocked site, habit and day of usage history " +
                         "will be deleted from this device. There is no cloud copy — this " +
                         "cannot be undone."
                 )
@@ -904,6 +905,10 @@ fun DataScreen(onBack: () -> Unit) {
                         dao.all().forEach { Alarms.setScheduleAlarm(context, it.copy(enabled = false)) }
                         dao.deleteAll()
                         container.db.blockedSiteDao().deleteAll()
+                        container.db.habitStepCheckDao().deleteAll()
+                        container.db.habitStepDao().deleteAll()
+                        container.db.habitEntryDao().deleteAll()
+                        container.db.habitDao().deleteAll()
                         container.settings.wipe()
                     }
                     showWipeConfirm = false

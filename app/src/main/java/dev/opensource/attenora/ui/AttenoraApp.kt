@@ -61,6 +61,9 @@ sealed interface Pushed {
     data object BlockKeywords : Pushed
     data object AppHealth : Pushed
     data class AppDetail(val pkg: String) : Pushed
+    data class HabitDetail(val id: Long) : Pushed
+    /** [id] null = a new habit; otherwise the habit being edited. */
+    data class HabitForm(val id: Long? = null) : Pushed
 }
 
 private data class TabSpec(
@@ -69,9 +72,13 @@ private data class TabSpec(
 )
 
 private val tabs = listOf(
-    TabSpec("Usage Stats", FgIcons.ChartBar),
-    TabSpec("Usage Limits", FgIcons.Gauge),
-    TabSpec("In-App Blocking", FgIcons.Grid)
+    // Short bar labels: four items no longer fit the full names at 11sp, and a
+    // truncated tab is worse than a short one. The screens and the drawer keep
+    // the full titles.
+    TabSpec("Stats", FgIcons.ChartBar),
+    TabSpec("Limits", FgIcons.Gauge),
+    TabSpec("Blocking", FgIcons.Grid),
+    TabSpec("Habits", FgIcons.CircleCheck)
 )
 
 private data class DrawerItem(
@@ -116,6 +123,7 @@ fun AttenoraApp() {
         DrawerItem("Home", FgIcons.Home) { scope.launch { drawerState.close() }; goTo(0) },
         DrawerItem("Usage Limits", FgIcons.Gauge) { scope.launch { drawerState.close() }; goTo(1) },
         DrawerItem("In-App Blocking", FgIcons.Grid) { scope.launch { drawerState.close() }; goTo(2) },
+        DrawerItem("Habits", FgIcons.CircleCheck) { scope.launch { drawerState.close() }; goTo(3) },
         DrawerItem("Settings", FgIcons.Gear) { scope.launch { drawerState.close() }; push(Pushed.Settings) }
     )
 
@@ -171,7 +179,10 @@ fun AttenoraApp() {
                         active = searchActive,
                         onActiveChange = { searchActive = it },
                         onQueryChange = { searchQuery = it },
-                        onMenu = { scope.launch { drawerState.open() } }
+                        onMenu = { scope.launch { drawerState.open() } },
+                        // Habits have their own page each; there is nothing in
+                        // the list worth filtering, so the icon would be a lie.
+                        searchable = tab != 3
                     )
                 }
             },
@@ -207,7 +218,11 @@ fun AttenoraApp() {
                         onAddLimit = { push(Pushed.AddLimit()) },
                         onBlockKeywords = { push(Pushed.BlockKeywords) }
                     )
-                    else -> InAppBlockingScreen()
+                    tab == 2 -> InAppBlockingScreen()
+                    else -> dev.opensource.attenora.ui.habits.HabitsScreen(
+                        onOpenHabit = { push(Pushed.HabitDetail(it)) },
+                        onAddHabit = { push(Pushed.HabitForm()) }
+                    )
                 }
             }
         }
@@ -250,7 +265,8 @@ private fun TopRow(
     active: Boolean,
     onActiveChange: (Boolean) -> Unit,
     onQueryChange: (String) -> Unit,
-    onMenu: () -> Unit
+    onMenu: () -> Unit,
+    searchable: Boolean = true
 ) {
     Row(
         Modifier
@@ -308,8 +324,10 @@ private fun TopRow(
                 FgIcon(FgIcons.Menu, "Open menu", size = 24.dp)
             }
             Spacer(Modifier.weight(1f))
-            androidx.compose.material3.IconButton(onClick = { onActiveChange(true) }) {
-                FgIcon(FgIcons.Search, "Search", size = 22.dp)
+            if (searchable) {
+                androidx.compose.material3.IconButton(onClick = { onActiveChange(true) }) {
+                    FgIcon(FgIcons.Search, "Search", size = 22.dp)
+                }
             }
         }
     }
@@ -365,6 +383,18 @@ private fun PushedContent(
             onBack = onPop,
             onSetLimit = { onPush(Pushed.AddLimit(dest.pkg)) },
             onBlockInApp = onOpenInAppBlocking
+        )
+        is Pushed.HabitDetail -> dev.opensource.attenora.ui.habits.HabitDetailScreen(
+            habitId = dest.id,
+            onBack = onPop,
+            onEdit = { onPush(Pushed.HabitForm(it)) }
+        )
+        is Pushed.HabitForm -> dev.opensource.attenora.ui.habits.HabitFormScreen(
+            habitId = dest.id,
+            // Back from an edit returns to the habit it came from, not to the
+            // tab root; a new habit has nothing behind it but the list.
+            onBack = { if (dest.id != null) onPush(Pushed.HabitDetail(dest.id)) else onPop() },
+            onSaved = { id -> onPush(Pushed.HabitDetail(id)) }
         )
     }
 }

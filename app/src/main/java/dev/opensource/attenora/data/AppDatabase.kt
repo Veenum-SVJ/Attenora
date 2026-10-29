@@ -3,11 +3,13 @@ package dev.opensource.attenora.data
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.RoomDatabase
+import androidx.room.Update
 import androidx.room.Upsert
 import kotlinx.coroutines.flow.Flow
 
@@ -165,6 +167,65 @@ data class ReelCount(
     val day: String,
     val packageName: String,
     val count: Int
+)
+
+/** Tracking modes for [Habit.mode]. */
+object HabitMode {
+    /** One tap marks the day done (tap again to undo). */
+    const val CHECK = "CHECK"
+    /** Tap to add a mark; the number is the point, one or more counts as done. */
+    const val COUNT = "COUNT"
+    /** A sequence of steps; the day is done when every step is checked. */
+    const val ROUTINE = "ROUTINE"
+}
+
+/**
+ * One commitment the user keeps track of by hand — the only table in the app
+ * that stores something the phone cannot observe for itself.
+ *
+ * [daysMask] reuses the Monday-first bitmask the limits already use, so a
+ * habit can be "Mon Wed Fri" instead of Tally's "due every N days", which
+ * drifts as soon as you miss one.
+ */
+@Entity(tableName = "habits")
+data class Habit(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    /** Why it is worth doing. Shown on the habit's own page only. */
+    val reason: String = "",
+    val mode: String = HabitMode.CHECK,
+    /** Bit 0 = Monday … bit 6 = Sunday; 127 = every day. */
+    val daysMask: Int = 0x7F,
+    val createdAtMs: Long = System.currentTimeMillis(),
+    val sortOrder: Int = 0
+)
+
+/**
+ * One row per habit per day. Any count above zero means the day was kept, so
+ * a counting habit still grows a streak; the number itself is what the habit's
+ * page shows ("3 today · 41 all time").
+ */
+@Entity(tableName = "habit_entries", primaryKeys = ["habitId", "day"])
+data class HabitEntry(
+    val habitId: Long,
+    val day: String,
+    val count: Int
+)
+
+/** An ordered step of a [HabitMode.ROUTINE] habit. */
+@Entity(tableName = "habit_steps", indices = [Index("habitId")])
+data class HabitStep(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val habitId: Long,
+    val label: String,
+    val sortOrder: Int = 0
+)
+
+/** Tick for one routine step on one day. */
+@Entity(tableName = "habit_step_checks", primaryKeys = ["stepId", "day"])
+data class HabitStepCheck(
+    val stepId: Long,
+    val day: String
 )
 
 /** Variable-session grant: target blocked-vs-free window.
@@ -488,6 +549,111 @@ interface ReelCountDao {
 }
 
 @Dao
+interface HabitDao {
+    @Query("SELECT * FROM habits ORDER BY sortOrder, id")
+    fun observeAll(): Flow<List<Habit>>
+
+    @Query("SELECT * FROM habits WHERE id = :id")
+    fun observe(id: Long): Flow<Habit?>
+
+    @Query("SELECT * FROM habits WHERE id = :id")
+    suspend fun get(id: Long): Habit?
+
+    @Query("SELECT * FROM habits")
+    suspend fun all(): List<Habit>
+
+    @Upsert
+    suspend fun upsert(habit: Habit): Long
+
+    @Query("DELETE FROM habits WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM habits")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface HabitEntryDao {
+    @Query("SELECT * FROM habit_entries")
+    fun observeAll(): Flow<List<HabitEntry>>
+
+    @Query("SELECT * FROM habit_entries")
+    suspend fun all(): List<HabitEntry>
+
+    @Query("SELECT count FROM habit_entries WHERE habitId = :habitId AND day = :day")
+    suspend fun countFor(habitId: Long, day: String): Int?
+
+    @Query(
+        """
+        INSERT INTO habit_entries(habitId, day, count)
+        VALUES(:habitId, :day, :count)
+        ON CONFLICT(habitId, day) DO UPDATE SET count = :count
+        """
+    )
+    suspend fun set(habitId: Long, day: String, count: Int)
+
+    @Query("DELETE FROM habit_entries WHERE habitId = :habitId AND day = :day")
+    suspend fun clear(habitId: Long, day: String)
+
+    @Query("DELETE FROM habit_entries WHERE habitId = :habitId")
+    suspend fun clearForHabit(habitId: Long)
+
+    @Query("DELETE FROM habit_entries")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface HabitStepDao {
+    @Query("SELECT * FROM habit_steps ORDER BY habitId, sortOrder, id")
+    fun observeAll(): Flow<List<HabitStep>>
+
+    @Query("SELECT * FROM habit_steps ORDER BY habitId, sortOrder, id")
+    suspend fun all(): List<HabitStep>
+
+    @Query("SELECT * FROM habit_steps WHERE habitId = :habitId ORDER BY sortOrder, id")
+    suspend fun forHabit(habitId: Long): List<HabitStep>
+
+    @Insert
+    suspend fun insert(step: HabitStep): Long
+
+    @Update
+    suspend fun update(step: HabitStep)
+
+    @Query("DELETE FROM habit_steps WHERE id = :id")
+    suspend fun delete(id: Long)
+
+    @Query("DELETE FROM habit_steps WHERE habitId = :habitId")
+    suspend fun deleteForHabit(habitId: Long)
+
+    @Query("DELETE FROM habit_steps")
+    suspend fun deleteAll()
+}
+
+@Dao
+interface HabitStepCheckDao {
+    @Query("SELECT * FROM habit_step_checks")
+    fun observeAll(): Flow<List<HabitStepCheck>>
+
+    @Query("SELECT * FROM habit_step_checks")
+    suspend fun all(): List<HabitStepCheck>
+
+    @Query("SELECT * FROM habit_step_checks WHERE day = :day")
+    suspend fun forDay(day: String): List<HabitStepCheck>
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun check(check: HabitStepCheck)
+
+    @Query("DELETE FROM habit_step_checks WHERE stepId = :stepId AND day = :day")
+    suspend fun uncheck(stepId: Long, day: String)
+
+    @Query("DELETE FROM habit_step_checks WHERE stepId = :stepId")
+    suspend fun clearForStep(stepId: Long)
+
+    @Query("DELETE FROM habit_step_checks")
+    suspend fun deleteAll()
+}
+
+@Dao
 interface SessionGrantDao {
     @Query("SELECT * FROM session_grants")
     fun observeAll(): Flow<List<SessionGrant>>
@@ -542,9 +708,10 @@ interface MetaDao {
         DailyUsage::class, HourlyUsage::class, UsageLimit::class, FocusSchedule::class,
         BlockedSite::class, BlockKeyword::class, Category::class, CategoryMember::class,
         HiddenItem::class, ElementRule::class, ElementUsage::class, SessionGrant::class,
-        BlockEvent::class, MetaEntry::class, ReelCount::class
+        BlockEvent::class, MetaEntry::class, ReelCount::class, Habit::class,
+        HabitEntry::class, HabitStep::class, HabitStepCheck::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -560,6 +727,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun elementRuleDao(): ElementRuleDao
     abstract fun elementUsageDao(): ElementUsageDao
     abstract fun reelCountDao(): ReelCountDao
+    abstract fun habitDao(): HabitDao
+    abstract fun habitEntryDao(): HabitEntryDao
+    abstract fun habitStepDao(): HabitStepDao
+    abstract fun habitStepCheckDao(): HabitStepCheckDao
     abstract fun sessionGrantDao(): SessionGrantDao
     abstract fun blockEventDao(): BlockEventDao
     abstract fun metaDao(): MetaDao
