@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import dev.opensource.attenora.R
+import dev.opensource.attenora.domain.HabitCopy
 import dev.opensource.attenora.ui.common.appLabel
 import dev.opensource.attenora.ui.common.formatDuration
 import dev.opensource.attenora.ui.common.hasNotificationPermission
@@ -24,12 +25,16 @@ object Notifier {
     const val CHANNEL_ALERTS = "fg_alerts"
     const val CHANNEL_USAGE = "fg_usage"
     const val CHANNEL_ASSISTANT = "fg_assistant"
+    const val CHANNEL_HABITS = "fg_habits"
+    const val CHANNEL_HABIT_STATUS = "fg_habit_status"
 
     private const val ID_ASSISTANT = 4100
     private const val ID_TOTAL10 = 4200
     private const val ID_FOCUS = 4300
     private const val ID_MONITOR_OFF = 4400
     private const val ID_MONITOR_STOPPED = 4500
+    private const val ID_HABIT_REMINDER = 4600
+    private const val ID_HABIT_STATUS = 4700
 
     @Volatile private var lastTotal10At = 0L
     private const val TOTAL10_INTERVAL_MS = 10 * 60_000L
@@ -44,6 +49,15 @@ object Notifier {
         )
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ASSISTANT, "Usage Assistant", NotificationManager.IMPORTANCE_LOW)
+                .apply { setShowBadge(false) }
+        )
+        // A nudge you asked for may make a sound; the ongoing status line is
+        // silent by design and must never buzz on every habit tick.
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_HABITS, "Habit reminders", NotificationManager.IMPORTANCE_DEFAULT)
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_HABIT_STATUS, "Habit status", NotificationManager.IMPORTANCE_LOW)
                 .apply { setShowBadge(false) }
         )
     }
@@ -204,6 +218,51 @@ object Notifier {
         }
     }
 
+    /**
+     * The daily habit nudge. Silent when everything is already done — a
+     * reminder that tells you there is nothing to do is just noise.
+     */
+    fun habitReminder(context: Context, done: Int, due: Int, leftNames: List<String>) {
+        if (leftNames.isEmpty()) return
+        post(context, ID_HABIT_REMINDER, base(context, CHANNEL_HABITS)
+            .setContentTitle(HabitCopy.reminderTitle(due - done))
+            .setContentText(HabitCopy.reminderBody(leftNames))
+            .setStyle(Notification.BigTextStyle().bigText(HabitCopy.reminderBody(leftNames)))
+            .setContentIntent(pendingOpenApp(context, tab = 3))
+            .setAutoCancel(true)
+            .build())
+    }
+
+    /**
+     * The ongoing "what is left" line: the strip for people who never open the
+     * app on their own. Updated in place and silent, so ticking a habit does
+     * not buzz; cancelled rather than updated once the day is clear.
+     */
+    fun habitStatus(context: Context, done: Int, due: Int, leftNames: List<String>) {
+        if (due <= 0 || leftNames.isEmpty()) {
+            cancelHabitStatus(context)
+            return
+        }
+        if (!canPost(context)) return
+        ensureChannels(context)
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        val line = HabitCopy.statusLine(done, due, leftNames)
+        nm.notify(ID_HABIT_STATUS, base(context, CHANNEL_HABIT_STATUS)
+            .setContentTitle("Habits today")
+            .setContentText(line)
+            .setContentIntent(pendingOpenApp(context, tab = 3))
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setShowWhen(false)
+            .build())
+    }
+
+    fun cancelHabitStatus(context: Context) {
+        runCatching {
+            context.getSystemService(NotificationManager::class.java)?.cancel(ID_HABIT_STATUS)
+        }
+    }
+
     /** Plain message sender used by alarms (daily/weekly/night-owl/schedule). */
     fun message(context: Context, id: Int, title: String, text: String, channel: String = CHANNEL_USAGE) {
         post(context, id, base(context, channel)
@@ -214,14 +273,18 @@ object Notifier {
     }
 
     /** "Go to Attenora" deep link for reminder-style notifications. */
-    fun pendingOpenApp(context: Context): PendingIntent {
+    fun pendingOpenApp(context: Context, tab: Int = -1): PendingIntent {
         val intent = Intent(context, dev.opensource.attenora.ui.MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            .putExtra(EXTRA_OPEN_TAB, tab)
         return PendingIntent.getActivity(
-            context, "open".hashCode(), intent,
+            context, "open".hashCode() + tab, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
     }
+
+    /** Tab a notification wants opened; -1 means "wherever the user left off". */
+    const val EXTRA_OPEN_TAB = "open_tab"
 }
 
 private fun Context.container(): dev.opensource.attenora.AppContainer =

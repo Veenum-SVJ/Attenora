@@ -53,8 +53,10 @@ import androidx.compose.ui.unit.dp
 import dev.opensource.attenora.data.DailyUsage
 import dev.opensource.attenora.data.HourTotals
 import dev.opensource.attenora.data.HiddenKind
+import dev.opensource.attenora.data.HabitBoard
 import dev.opensource.attenora.data.HiddenItem
 import dev.opensource.attenora.data.ReelCount
+import dev.opensource.attenora.domain.HabitCopy
 import dev.opensource.attenora.domain.WeekEngine
 import dev.opensource.attenora.ui.common.AppIcon
 import dev.opensource.attenora.ui.common.FgCard
@@ -113,6 +115,17 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit, onOpenHealth: (
     val dismissedTips = remember { androidx.compose.runtime.mutableStateListOf<String>() }
 
     val mondayFirst by container.settings.weekMondayFirst.collectAsState(initial = true)
+
+    // What is left today, read once from Room and re-read on every write.
+    val habitBoard by remember { container.habits.observe() }.collectAsState(
+        initial = HabitBoard(
+            today = LocalDate.now(),
+            habits = emptyList(),
+            entries = emptyMap(),
+            steps = emptyMap(),
+            checksToday = emptyMap()
+        )
+    )
 
     // Reconcile once when the screen appears (checkpointed delta — cheap).
     // The rows below are read by a separate one-shot query, so bump a tick
@@ -295,6 +308,25 @@ fun UsageStatsScreen(query: String, onOpenApp: (String) -> Unit, onOpenHealth: (
         contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 24.dp)
     ) {
         item { PageHeader("Usage Stats") }
+
+        // The unfinished-today line, for people who live on this screen. A pure
+        // database read — no timer, nothing new to keep awake — and it holds its
+        // tongue once the last habit is marked.
+        item {
+            val left = habitBoard.leftToday()
+            val due = habitBoard.dueToday().size
+            if (due > 0 && left.isNotEmpty()) {
+                Text(
+                    "${HabitCopy.progressLine(due - left.size, due)} · " +
+                        HabitCopy.leftLine(left.map { it.name }),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                )
+            }
+        }
 
         // Shown only when something is actually broken, so a healthy app keeps
         // the top of Home clean. Not dismissible on purpose: a dismissed warning

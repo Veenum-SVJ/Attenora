@@ -38,6 +38,18 @@ data class HabitBoard(
 
     fun recentTotal(habitId: Long, days: Int = 7): Int =
         HabitStreaks.recentTotal(entriesFor(habitId), today, days)
+
+    /** Habits the schedule puts on today's plate. */
+    fun dueToday(): List<Habit> =
+        habits.filter { HabitStreaks.isScheduled(today, it.daysMask) }
+
+    fun doneToday(): List<Habit> = dueToday().filter { countFor(it.id) > 0 }
+
+    /** What the strip, the reminder and the notification are all about. */
+    fun leftToday(): List<Habit> = dueToday().filter { countFor(it.id) <= 0 }
+
+    /** True when there is nothing left to nag about (or nothing was due). */
+    fun nothingLeftToday(): Boolean = leftToday().isEmpty()
 }
 
 /**

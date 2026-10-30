@@ -90,6 +90,12 @@ class SettingsRepository(private val context: Context) {
         val FOCUS_END = longPreferencesKey("focus_end_ms")
         val FOCUS_DAY = stringPreferencesKey("focus_day")
         val FOCUS_MIN = intPreferencesKey("focus_min")
+
+        // v1.3 habits
+        /** -1 = off; otherwise minutes after midnight for the daily habit nudge. */
+        val HABIT_REMINDER_MINUTE = intPreferencesKey("habit_reminder_minute")
+        /** Ongoing "what is left today" notification in the shade. */
+        val HABIT_NOTIFY_ON = booleanPreferencesKey("habit_notify_on")
     }
 
     // ---- Existing (v1) ----
@@ -161,6 +167,15 @@ class SettingsRepository(private val context: Context) {
     /** Minutes accrued into [focusDay]. */
     val focusMinutes: Flow<Int> = context.dataStore.data.map { it[Keys.FOCUS_MIN] ?: 0 }
 
+    // ---- v1.3 habits ----
+    /** -1 = disabled; otherwise minutes after midnight. */
+    val habitReminderMinute: Flow<Int> = context.dataStore.data.map {
+        it[Keys.HABIT_REMINDER_MINUTE] ?: -1
+    }
+    val habitNotifyOn: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.HABIT_NOTIFY_ON] ?: false
+    }
+
     /** Marks a first-run hint as seen. Never un-set: a hint shows once ever. */
     suspend fun markHintSeen(id: String) = context.dataStore.edit { p ->
         p[Keys.HINTS_SEEN] = (p[Keys.HINTS_SEEN] ?: emptySet()) + id
@@ -231,6 +246,12 @@ class SettingsRepository(private val context: Context) {
         it[Keys.FOCUS_DAY] = day
         it[Keys.FOCUS_MIN] = minutes.coerceAtLeast(0)
     }
+
+    suspend fun setHabitReminderMinute(minute: Int) =
+        context.dataStore.edit { it[Keys.HABIT_REMINDER_MINUTE] = minute.coerceIn(-1, 1439) }
+
+    suspend fun setHabitNotify(on: Boolean) =
+        context.dataStore.edit { it[Keys.HABIT_NOTIFY_ON] = on }
 
     /** Erase every preference (used by "wipe all data"). */
     suspend fun wipe() = context.dataStore.edit { it.clear() }

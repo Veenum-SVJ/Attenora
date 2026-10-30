@@ -25,6 +25,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -88,7 +89,7 @@ private data class DrawerItem(
 )
 
 @Composable
-fun AttenoraApp() {
+fun AttenoraApp(initialTab: Int = -1, onTabApplied: () -> Unit = {}) {
     val container = LocalAppContainer.current
     // Warm StateFlow: its current value seeds `collectAsState`, so a returning
     // user's first frame is already the real screen (no onboarding flash).
@@ -105,6 +106,17 @@ fun AttenoraApp() {
     var searchActive by rememberSaveable { mutableStateOf(false) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
+
+    // A notification asked for a specific tab ("3 habits left" should land on
+    // habits, not on stats). Consumed once, then cleared by the caller.
+    LaunchedEffect(initialTab) {
+        if (initialTab in 0..3) {
+            tab = initialTab
+            pushed = null
+            searchActive = false
+            onTabApplied()
+        }
+    }
 
     fun goTo(targetTab: Int) {
         pushed = null

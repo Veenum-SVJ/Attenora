@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -30,10 +31,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.opensource.attenora.data.Habit
 import dev.opensource.attenora.data.HabitBoard
 import dev.opensource.attenora.data.HabitMode
+import dev.opensource.attenora.domain.HabitCopy
 import dev.opensource.attenora.domain.HabitStreaks
 import dev.opensource.attenora.ui.common.FgDivider
 import dev.opensource.attenora.ui.common.FgGroup
@@ -43,6 +46,7 @@ import dev.opensource.attenora.ui.common.LocalAppContainer
 import dev.opensource.attenora.ui.common.PageHeader
 import dev.opensource.attenora.ui.common.daysSummary
 import dev.opensource.attenora.ui.icons.FgIcons
+import dev.opensource.attenora.ui.theme.fg
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
@@ -76,16 +80,19 @@ fun HabitsScreen(
             item { PageHeader("Habits") }
 
             item {
-                Text(
-                    when {
-                        habits.isEmpty() -> "Nothing tracked yet"
-                        dueToday.isEmpty() -> "Nothing scheduled today"
-                        else -> "$doneToday of ${dueToday.size} done today"
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
-                )
+                when {
+                    habits.isEmpty() || dueToday.isEmpty() -> Text(
+                        if (habits.isEmpty()) "Nothing tracked yet" else "Nothing scheduled today",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)
+                    )
+                    else -> HabitStrip(
+                        done = doneToday,
+                        due = dueToday.size,
+                        leftNames = board.leftToday().map { it.name }
+                    )
+                }
             }
 
             if (habits.isEmpty()) {
@@ -147,6 +154,73 @@ fun HabitsScreen(
                 contentAlignment = Alignment.Center
             ) {
                 FgIcon(FgIcons.Plus, "Add a habit", size = 26.dp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HabitStrip(done: Int, due: Int, leftNames: List<String>) {
+    val accent = LocalAccentColor.current
+    val complete = leftNames.isEmpty()
+    val fraction = if (due <= 0) 0f else (done.toFloat() / due).coerceIn(0f, 1f)
+
+    FgGroup(Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 14.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    HabitCopy.progressLine(done, due),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+                Spacer(Modifier.weight(1f))
+                if (complete) {
+                    FgIcon(
+                        FgIcons.Check,
+                        null,
+                        size = 16.dp,
+                        tint = MaterialTheme.fg.success
+                    )
+                } else {
+                    Text(
+                        "${due - done} left",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accent
+                    )
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            // The strip proper: one hairline-weight bar, no numbers to do
+            // arithmetic on.
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(4.dp)
+                    .clip(RoundedCornerShape(2.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant)
+            ) {
+                if (fraction > 0f) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth(fraction)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(if (complete) MaterialTheme.fg.success else accent)
+                    )
+                }
+            }
+            if (!complete) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    HabitCopy.leftLine(leftNames),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         }
     }

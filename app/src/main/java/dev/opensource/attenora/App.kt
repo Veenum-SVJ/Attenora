@@ -15,6 +15,7 @@ import dev.opensource.attenora.domain.CategoryClassifier
 import dev.opensource.attenora.enforcement.Alarms
 import dev.opensource.attenora.enforcement.EnforcementManager
 import dev.opensource.attenora.enforcement.FocusSession
+import dev.opensource.attenora.enforcement.HabitStatusSync
 import dev.opensource.attenora.enforcement.MonitorWatchdog
 import dev.opensource.attenora.enforcement.Notifier
 import kotlinx.coroutines.CoroutineScope
@@ -23,6 +24,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
@@ -119,6 +121,10 @@ class AttenoraApplication : Application() {
             delay(MonitorWatchdog.settleRemainingMs())
             MonitorWatchdog.check(this@AttenoraApplication, "app")
         }
+
+        // The ongoing habit notification follows the database, so a tick made
+        // in the app is reflected in the shade without any timer.
+        HabitStatusSync.start(this, container)
     }
 }
 
@@ -224,6 +230,21 @@ class AppContainer(val app: Context) {
             settings.reminderMinute
                 .distinctUntilChanged()
                 .collect { Alarms.setReminderAlarm(app, it) }
+        }
+        scope.launch {
+            // The habit nudge rides the same collector: a flow collection runs
+            // on every process start, so a force-stop (or MIUI clearing the
+            // alarm queue) is repaired the next time the app runs. -1 cancels.
+            settings.habitReminderMinute
+                .distinctUntilChanged()
+                .collect { Alarms.setHabitReminderAlarm(app, it) }
+        }
+        scope.launch {
+            // The midnight re-label follows both of its inputs: the toggle and
+            // the hour the usage day rolls over.
+            combine(settings.habitNotifyOn, settings.resetHour) { on, hour -> on to hour }
+                .distinctUntilChanged()
+                .collect { (on, hour) -> Alarms.setHabitRefreshAlarm(app, on, hour) }
         }
         scope.launch {
             // Weekly summary and reminders (all inexact).

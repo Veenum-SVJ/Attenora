@@ -14,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import dev.opensource.attenora.AttenoraApplication
 import dev.opensource.attenora.data.ThemeMode
+import dev.opensource.attenora.enforcement.Notifier
 import dev.opensource.attenora.ui.common.LocalAccentColor
 import dev.opensource.attenora.ui.common.LocalAppContainer
 import dev.opensource.attenora.ui.theme.FgColors
@@ -30,8 +31,12 @@ class MainActivity : ComponentActivity() {
     private var firstFrameLogged = false
     private val startT0 = android.os.SystemClock.elapsedRealtime()
 
+    /** Tab a notification asked for; -1 = open wherever the user left off. */
+    private val requestedTab = androidx.compose.runtime.mutableIntStateOf(-1)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        requestedTab.intValue = intent?.getIntExtra(Notifier.EXTRA_OPEN_TAB, -1) ?: -1
         val t0 = android.os.SystemClock.elapsedRealtime()
         enableEdgeToEdge()
         val container = (application as AttenoraApplication).container
@@ -73,11 +78,24 @@ class MainActivity : ComponentActivity() {
                             modifier = Modifier.fillMaxSize(),
                             color = MaterialTheme.colorScheme.background
                         ) {
-                            AttenoraApp()
+                            AttenoraApp(
+                                initialTab = requestedTab.intValue,
+                                onTabApplied = { requestedTab.intValue = -1 }
+                            )
                         }
                     }
                 }
             }
         }
+    }
+
+    /**
+     * singleTask, so tapping a habit notification while the app is already open
+     * arrives here rather than starting a second activity.
+     */
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        requestedTab.intValue = intent.getIntExtra(Notifier.EXTRA_OPEN_TAB, -1)
     }
 }

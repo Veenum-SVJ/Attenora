@@ -27,6 +27,8 @@ object Alarms {
     const val ACTION_SCHEDULE_END = "dev.opensource.attenora.action.SCHEDULE_END"
     const val ACTION_REMINDER = "dev.opensource.attenora.action.DAILY_REMINDER"
     const val ACTION_WEEKLY = "dev.opensource.attenora.action.WEEKLY_SUMMARY"
+    const val ACTION_HABIT_REMINDER = "dev.opensource.attenora.action.HABIT_REMINDER"
+    const val ACTION_HABIT_REFRESH = "dev.opensource.attenora.action.HABIT_REFRESH"
     const val EXTRA_SCHEDULE_ID = "schedule_id"
     private const val WINDOW_MS = 60_000L
     private const val DAY_MS = 24L * 60 * 60 * 1000L
@@ -59,6 +61,31 @@ object Alarms {
 
     fun setReminderAlarm(context: Context, minuteOfDay: Int) {
         setDailyAlarm(context, reminderPendingIntent(context), minuteOfDay)
+    }
+
+    /**
+     * The one nudge a day for whatever is still unmarked. Inexact on purpose:
+     * Android may drift it by a few minutes, which is a fair price for never
+     * asking for the exact-alarm permission.
+     */
+    fun setHabitReminderAlarm(context: Context, minuteOfDay: Int) {
+        setDailyAlarm(context, habitPendingIntent(context), minuteOfDay)
+    }
+
+    /**
+     * Just after the usage day rolls over, re-label the ongoing habit status.
+     * Without this the shade would still claim "3 of 5 done" from yesterday on
+     * a phone that has not been opened since. One inexact alarm a day.
+     */
+    fun setHabitRefreshAlarm(context: Context, on: Boolean, resetHour: Int) {
+        val am = context.getSystemService(AlarmManager::class.java) ?: return
+        val pi = habitRefreshPendingIntent(context)
+        if (!on) {
+            am.cancel(pi)
+            return
+        }
+        val minute = (resetHour.coerceIn(0, 23) * 60 + 1)
+        setDailyAlarm(context, pi, minute)
     }
 
     fun rearmWeekly(context: Context, on: Boolean, dayMon0: Int, minuteOfDay: Int) {
@@ -144,6 +171,12 @@ object Alarms {
     private fun weeklyPendingIntent(context: Context): PendingIntent1 =
         actionPendingIntent(context, ACTION_WEEKLY, "weekly".hashCode(), 0L)
 
+    private fun habitPendingIntent(context: Context): PendingIntent1 =
+        actionPendingIntent(context, ACTION_HABIT_REMINDER, "habit_reminder".hashCode(), 0L)
+
+    private fun habitRefreshPendingIntent(context: Context): PendingIntent1 =
+        actionPendingIntent(context, ACTION_HABIT_REFRESH, "habit_refresh".hashCode(), 0L)
+
     private fun actionPendingIntent(context: Context, action: String, requestCode: Int, id: Long): PendingIntent1 {
         val intent = Intent(context, ScheduleAlarmReceiver::class.java)
             .setAction(action)
@@ -182,6 +215,8 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
                     Alarms.ACTION_SCHEDULE_END -> handleScheduleEnd(context, container, intent)
                     Alarms.ACTION_REMINDER -> handleReminder(context, container)
                     Alarms.ACTION_WEEKLY -> handleWeekly(context, container)
+                    Alarms.ACTION_HABIT_REMINDER -> handleHabitReminder(context, container)
+                    Alarms.ACTION_HABIT_REFRESH -> handleHabitRefresh(context, container)
                 }
             } finally {
                 pending.finish()
@@ -242,6 +277,33 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
             "This week: ${formatDuration(total)} of screen time across ${rows.map { it.packageName }.distinct().size} apps."
         )
     }
+
+    /**
+     * The daily habit nudge. Re-arms before anything else, so a deferred alarm
+     * cannot swallow the next day's. Posts nothing when the day is already
+     * clear: the app should not beg for a tick you already made.
+     */
+    private suspend fun handleHabitReminder(context: Context, container: dev.opensource.attenora.AppContainer) {
+        val minute = container.settings.habitReminderMinute.first()
+        Alarms.setHabitReminderAlarm(context, minute)
+        if (minute !in 0..1439) return
+        val board = container.habits.observe().first()
+        val left = board.leftToday()
+        if (left.isEmpty()) return
+        Notifier.habitReminder(
+            context,
+            done = board.doneToday().size,
+            due = board.dueToday().size,
+            leftNames = left.map { it.name }
+        )
+    }
+
+    /** Day rollover: re-label the ongoing status without waiting for a launch. */
+    private suspend fun handleHabitRefresh(context: Context, container: dev.opensource.attenora.AppContainer) {
+        val on = container.settings.habitNotifyOn.first()
+        Alarms.setHabitRefreshAlarm(context, on, container.settings.resetHour.first())
+        HabitStatusSync.refresh(context, container)
+    }
 }
 
 class BootReceiver : BroadcastReceiver() {
@@ -265,6 +327,13 @@ class BootReceiver : BroadcastReceiver() {
                 // still the empty seed, so schedules would never be re-armed.
                 Alarms.rearmAll(context, container.db.focusScheduleDao().observeAll().first())
                 Alarms.setReminderAlarm(context, container.settings.reminderMinute.first())
+                Alarms.setHabitReminderAlarm(context, container.settings.habitReminderMinute.first())
+                Alarms.setHabitRefreshAlarm(
+                    context,
+                    container.settings.habitNotifyOn.first(),
+                    container.settings.resetHour.first()
+                )
+                HabitStatusSync.refresh(context, container)
                 Alarms.rearmWeekly(
                     context,
                     container.settings.weeklyOn.first(),

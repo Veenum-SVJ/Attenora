@@ -67,6 +67,7 @@ import dev.opensource.attenora.data.SettingsRepository
 import dev.opensource.attenora.data.ThemeMode
 import dev.opensource.attenora.enforcement.Alarms
 import dev.opensource.attenora.enforcement.AttenoraAccessibilityService
+import dev.opensource.attenora.enforcement.HabitStatusSync
 import dev.opensource.attenora.enforcement.MonitorWatchdog
 import dev.opensource.attenora.ui.limits.rememberChallengeGate
 import dev.opensource.attenora.util.Grayscale
@@ -77,6 +78,7 @@ import dev.opensource.attenora.ui.common.LocalAppContainer
 import dev.opensource.attenora.ui.common.NavRow
 import dev.opensource.attenora.ui.common.PageHeader
 import dev.opensource.attenora.ui.common.PermissionRow
+import dev.opensource.attenora.ui.common.formatClock
 import dev.opensource.attenora.ui.common.isAccessibilityServiceEnabled
 import dev.opensource.attenora.ui.common.openAccessibilitySettings
 import dev.opensource.attenora.ui.common.ToggleRow
@@ -821,6 +823,134 @@ fun DailyReminderScreen(onBack: () -> Unit) {
             onSave = { minute ->
                 scope.launch { container.settings.setReminderMinute(minute) }
                 showReminderPicker = false
+            }
+        )
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Habit reminders
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Being told about habits, in the two shapes that need no polling: one inexact
+ * alarm a day, and one silent ongoing notification driven by the database.
+ */
+@Composable
+fun HabitRemindersScreen(onBack: () -> Unit) {
+    val container = LocalAppContainer.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    val reminderMinute by container.settings.habitReminderMinute.collectAsState(initial = -1)
+    val notifyOn by container.settings.habitNotifyOn.collectAsState(initial = false)
+
+    var showPicker by remember { mutableStateOf(false) }
+    var notifPermission by remember { mutableStateOf(hasNotificationPermission(context)) }
+
+    // The system dialog changes the permission; re-read it when we come back.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notifPermission = hasNotificationPermission(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    SettingsPage("Habit reminders", onBack) {
+        if (!notifPermission) {
+            FgGroup(Modifier.padding(horizontal = 16.dp)) {
+                Column(Modifier.padding(20.dp)) {
+                    Text("Notifications are off", style = MaterialTheme.typography.bodyLarge)
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Android blocks both of these until you allow notifications for Attenora.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(onClick = { requestNotificationPermission(context) }) {
+                        Text("Allow notifications")
+                    }
+                }
+            }
+        }
+
+        SectionLabel("Daily nudge")
+        FgGroup(Modifier.padding(horizontal = 16.dp)) {
+            ToggleRow(
+                title = "Remind me about habits",
+                subtitle = if (reminderMinute in 0..1439) {
+                    "Every day at ${formatClock(reminderMinute)} — only if something is left"
+                } else {
+                    "Off"
+                },
+                icon = FgIcons.Bell,
+                checked = reminderMinute in 0..1439,
+                onCheckedChange = { on ->
+                    val minute = if (on) 20 * 60 else -1
+                    scope.launch {
+                        container.settings.setHabitReminderMinute(minute)
+                        Alarms.setHabitReminderAlarm(context, minute)
+                    }
+                }
+            )
+            if (reminderMinute in 0..1439) {
+                FgDivider(inset = RowInset)
+                NavRow(
+                    title = "Time",
+                    value = formatClock(reminderMinute),
+                    onClick = { showPicker = true }
+                )
+            }
+        }
+        Text(
+            "One notification a day, and it stays quiet when everything is " +
+                "already done. Android may deliver it a few minutes late — that is " +
+                "the price of not asking for exact alarms.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+
+        SectionLabel("In the notification shade")
+        FgGroup(Modifier.padding(horizontal = 16.dp)) {
+            ToggleRow(
+                title = "Show what's left today",
+                subtitle = "A silent, ongoing line that updates as you tick habits",
+                icon = FgIcons.CircleCheck,
+                checked = notifyOn,
+                onCheckedChange = { on ->
+                    scope.launch {
+                        container.settings.setHabitNotify(on)
+                        Alarms.setHabitRefreshAlarm(context, on, container.resetHourCache)
+                        HabitStatusSync.refresh(context, container)
+                    }
+                }
+            )
+        }
+        Text(
+            "It disappears on its own once the last habit is marked, and comes " +
+                "back the next morning with the new day.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+    }
+
+    if (showPicker) {
+        ReminderTimeDialog(
+            initialMinute = if (reminderMinute in 0..1439) reminderMinute else 20 * 60,
+            onDismiss = { showPicker = false },
+            onSave = { minute ->
+                scope.launch {
+                    container.settings.setHabitReminderMinute(minute)
+                    Alarms.setHabitReminderAlarm(context, minute)
+                }
+                showPicker = false
             }
         )
     }

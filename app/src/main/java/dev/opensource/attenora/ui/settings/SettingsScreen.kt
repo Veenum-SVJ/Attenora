@@ -91,6 +91,7 @@ fun SettingsScreen(onBack: () -> Unit) {
         "tools" -> { FocusToolsScreen(onBack = { page = null }); return }
         "web" -> { WebsiteBlockingScreen(onBack = { page = null }); return }
         "reminder" -> { DailyReminderScreen(onBack = { page = null }); return }
+        "habitReminders" -> { HabitRemindersScreen(onBack = { page = null }); return }
         "data" -> { DataScreen(onBack = { page = null }); return }
     }
 
@@ -145,6 +146,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                 NavRow("Website Blocking", { page = "web" }, icon = FgIcons.Globe)
                 FgDivider(inset = RowInset)
                 NavRow("Daily Reminder", { page = "reminder" }, icon = FgIcons.Bell)
+                FgDivider(inset = RowInset)
+                NavRow(
+                    title = "Habit reminders",
+                    subtitle = "A nudge, and a status in the shade",
+                    onClick = { page = "habitReminders" },
+                    icon = FgIcons.CircleCheck
+                )
                 FgDivider(inset = RowInset)
                 NavRow("Data", { page = "data" }, icon = FgIcons.Doc)
             }
