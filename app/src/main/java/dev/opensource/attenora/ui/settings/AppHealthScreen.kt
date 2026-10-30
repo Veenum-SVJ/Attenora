@@ -107,7 +107,7 @@ fun AppHealthScreen(onBack: () -> Unit) {
             PermissionRow("Usage access", usageGranted, "Grant") {
                 context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
             }
-            FgDivider(inset = 20.dp)
+            FgDivider(inset = RowInset)
             PermissionRow(
                 title = "App monitor",
                 granted = serviceOn && !stalled,
