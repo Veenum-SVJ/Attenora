@@ -52,7 +52,7 @@ class LimitEngineTest {
     }
 
     @Test
-    fun `focusguard itself is never blocked`() {
+    fun `attenora itself is never blocked`() {
         val decision = LimitEngine.evaluate(usedMs = 10_000_000, dailyLimitMs = 1_000, blockAllActive = true, pkg = "dev.opensource.attenora")
         assertFalse(decision.blocked)
     }

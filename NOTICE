@@ -1,16 +1,16 @@
-FocusGuard — third-party notices
+Attenora — third-party notices
 ================================
 
-FocusGuard ships no third-party code, fonts or images at runtime. The only
+Attenora ships no third-party code, fonts or images at runtime. The only
 attribution it carries is for the *geometry* of its icon set, which is derived
 from Lucide.
 
 
 Lucide
 ------
-Applies to: app/src/main/java/dev/opensource/focusguard/ui/icons/FgIcons.kt
+Applies to: app/src/main/java/dev/opensource/attenora/ui/icons/FgIcons.kt
 
-The outline paths in FocusGuard's icon set follow Lucide's 24x24 grid, stroke
+The outline paths in Attenora's icon set follow Lucide's 24x24 grid, stroke
 weight and rounded joins, and several paths are derived from Lucide's own
 geometry (for example `gauge`, `layout-grid` and `hourglass`). They are
 re-implemented here as Compose `ImageVector` builders rather than copied as
