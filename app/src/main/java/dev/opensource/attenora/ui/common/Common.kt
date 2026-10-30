@@ -320,28 +320,32 @@ fun PermissionRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 6.dp)
+            .padding(horizontal = 20.dp, vertical = 14.dp)
     ) {
         val semantic = dev.opensource.attenora.ui.theme.LocalFgSemantic.current
-        Box(
-            Modifier
-                .size(10.dp)
-                .clip(CircleShape)
-                .background(
-                    when {
-                        // Granted but not running: the permission is there and
-                        // the service is not, which is a fault, not a refusal.
-                        warn -> semantic.warning
-                        granted -> semantic.success
-                        else -> semantic.danger
-                    }
-                )
-        )
-        Spacer(Modifier.width(10.dp))
+        // Same 22dp leading column as NavRow's icon, so the titles on a mixed
+        // card share one left edge instead of stepping in and out by 16dp.
+        Box(Modifier.size(22.dp), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(
+                        when {
+                            // Granted but not running: the permission is there and
+                            // the service is not, which is a fault, not a refusal.
+                            warn -> semantic.warning
+                            granted -> semantic.success
+                            else -> semantic.danger
+                        }
+                    )
+            )
+        }
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title,
-                style = MaterialTheme.typography.bodyMedium
+                style = MaterialTheme.typography.bodyLarge
             )
             if (note != null) {
                 Spacer(Modifier.height(2.dp))

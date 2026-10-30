@@ -8,11 +8,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -188,11 +189,11 @@ fun HabitFormScreen(
                 Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 20.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 WEEK_LETTERS.forEachIndexed { index, letter ->
                     val on = (daysMask shr index) and 1 == 1
-                    DayChip(letter, on) {
+                    DayChip(letter, on, Modifier.weight(1f)) {
                         val bit = 1 shl index
                         // Never leave a habit with no day: it would be invisible
                         // on the tab and silently never due.
@@ -408,22 +409,31 @@ private fun ChoiceRow(
 }
 
 @Composable
-private fun DayChip(letter: String, on: Boolean, onClick: () -> Unit) {
+private fun DayChip(
+    letter: String,
+    on: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
     val accent = LocalAccentColor.current
-    Box(
-        Modifier
-            .size(38.dp)
-            .clip(CircleShape)
-            .background(if (on) accent else MaterialTheme.colorScheme.surfaceVariant)
-            .clickable(onClick = onClick),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            letter,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (on) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurface
-        )
+    Box(modifier, contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .sizeIn(maxWidth = 48.dp, maxHeight = 48.dp)
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clip(CircleShape)
+                .background(if (on) accent else MaterialTheme.colorScheme.surfaceVariant)
+                .clickable(onClick = onClick),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                letter,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (on) MaterialTheme.colorScheme.background else MaterialTheme.colorScheme.onSurface
+            )
+        }
     }
 }
 

@@ -417,7 +417,7 @@ fun PermissionsScreen(onBack: () -> Unit) {
             PermissionRow("Usage access", usageGranted, "Grant") {
                 context.startActivity(Intent(AndroidSettings.ACTION_USAGE_ACCESS_SETTINGS))
             }
-            FgDivider(inset = 20.dp)
+            FgDivider(inset = RowInset)
             PermissionRow(
                 title = "Attenora accessibility (blocking, websites, in-app)",
                 granted = serviceOn,
@@ -447,7 +447,7 @@ fun PermissionsScreen(onBack: () -> Unit) {
                 }
             }
             if (android.os.Build.VERSION.SDK_INT >= 33) {
-                FgDivider(inset = 20.dp)
+                FgDivider(inset = RowInset)
                 PermissionRow("Notifications", notifGranted, "Allow") {
                     requestNotificationPermission(context)
                 }
