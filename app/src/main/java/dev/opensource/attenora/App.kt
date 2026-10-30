@@ -8,6 +8,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import dev.opensource.attenora.data.AppDatabase
 import dev.opensource.attenora.data.BackupRepository
 import dev.opensource.attenora.data.Category
+import dev.opensource.attenora.data.HabitReminders
 import dev.opensource.attenora.data.HabitRepository
 import dev.opensource.attenora.data.SettingsRepository
 import dev.opensource.attenora.data.UsageRepository
@@ -99,6 +100,16 @@ private val MIGRATION_5_6 = object : Migration(5, 6) {
     }
 }
 
+/**
+ * v6 → v7: a per-habit reminder time. One added column, defaulted to -1 so
+ * every existing habit keeps following the daily default exactly as before.
+ */
+private val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE `habits` ADD COLUMN `reminderMinute` INTEGER NOT NULL DEFAULT -1")
+    }
+}
+
 class AttenoraApplication : Application() {
     lateinit var container: AppContainer
         private set
@@ -137,7 +148,7 @@ class AppContainer(val app: Context) {
     private val containerInitT0 = android.os.SystemClock.elapsedRealtime()
 
     val db: AppDatabase = Room.databaseBuilder(app, AppDatabase::class.java, "attenora.db")
-        .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        .addMigrations(MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
         .fallbackToDestructiveMigration()
         .build()
 
@@ -232,12 +243,17 @@ class AppContainer(val app: Context) {
                 .collect { Alarms.setReminderAlarm(app, it) }
         }
         scope.launch {
-            // The habit nudge rides the same collector: a flow collection runs
-            // on every process start, so a force-stop (or MIUI clearing the
-            // alarm queue) is repaired the next time the app runs. -1 cancels.
-            settings.habitReminderMinute
+            // Arm the next nudge whenever the default time or the habits
+            // themselves change — a flow collection runs on every process
+            // start, so a force-stop (or MIUI clearing the alarm queue) is
+            // repaired the next time the app runs. Room re-emits this only on
+            // add/edit/delete, so ticking a habit never touches the alarm path.
+            combine(
+                settings.habitReminderMinute,
+                db.habitDao().observeAll()
+            ) { default, habits -> HabitReminders.slots(habits, default) }
                 .distinctUntilChanged()
-                .collect { Alarms.setHabitReminderAlarm(app, it) }
+                .collect { slots -> Alarms.armNextHabitReminder(app, slots) }
         }
         scope.launch {
             // The midnight re-label follows both of its inputs: the toggle and

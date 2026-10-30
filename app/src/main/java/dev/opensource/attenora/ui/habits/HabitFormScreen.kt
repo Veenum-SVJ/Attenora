@@ -44,8 +44,12 @@ import dev.opensource.attenora.ui.common.FgGroup
 import dev.opensource.attenora.ui.common.FgIcon
 import dev.opensource.attenora.ui.common.LocalAccentColor
 import dev.opensource.attenora.ui.common.LocalAppContainer
+import dev.opensource.attenora.ui.common.NavRow
 import dev.opensource.attenora.ui.common.PageHeader
+import dev.opensource.attenora.ui.common.ToggleRow
+import dev.opensource.attenora.ui.common.formatClock
 import dev.opensource.attenora.ui.icons.FgIcons
+import dev.opensource.attenora.ui.settings.ReminderTimeDialog
 import kotlinx.coroutines.launch
 
 /** One step being edited. A null [id] is a step that does not exist yet. */
@@ -73,6 +77,10 @@ fun HabitFormScreen(
     var loaded by rememberSaveable { mutableStateOf(habitId == null) }
     var stepText by rememberSaveable { mutableStateOf("") }
     val steps = remember { mutableStateListOf<StepDraftUi>() }
+    // This habit's own nudge; off means "follow the daily default".
+    var reminderOn by rememberSaveable { mutableStateOf(false) }
+    var reminderMinute by rememberSaveable { mutableIntStateOf(20 * 60) }
+    var showReminderPicker by remember { mutableStateOf(false) }
 
     // Editing reads the stored habit once; everything after that is local.
     LaunchedEffect(habitId) {
@@ -83,6 +91,8 @@ fun HabitFormScreen(
         mode = habit.mode
         daysMask = habit.daysMask
         sortOrder = habit.sortOrder
+        reminderOn = habit.reminderMinute in 0..1439
+        reminderMinute = if (reminderOn) habit.reminderMinute else 20 * 60
         steps.clear()
         steps.addAll(
             container.db.habitStepDao().forHabit(habitId).map { StepDraftUi(it.id, it.label) }
@@ -262,6 +272,47 @@ fun HabitFormScreen(
         item { Spacer(Modifier.height(20.dp)) }
 
         item {
+            Text(
+                "Reminder",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 24.dp, top = 16.dp, bottom = 6.dp)
+            )
+        }
+        item {
+            FgGroup(Modifier.padding(horizontal = 16.dp)) {
+                ToggleRow(
+                    title = "Remind me about this habit",
+                    subtitle = if (reminderOn) {
+                        "Every day at ${formatClock(reminderMinute)} — only if it's still unmarked"
+                    } else {
+                        "Follows the daily default in Settings"
+                    },
+                    icon = FgIcons.Bell,
+                    checked = reminderOn,
+                    onCheckedChange = { reminderOn = it }
+                )
+                if (reminderOn) {
+                    FgDivider(inset = 56.dp)
+                    NavRow(
+                        title = "Time",
+                        value = formatClock(reminderMinute),
+                        onClick = { showReminderPicker = true }
+                    )
+                }
+            }
+        }
+        item {
+            Text(
+                "One quiet notification, and only when this habit is still left. " +
+                    "A habit with no time of its own follows the daily default.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+            )
+        }
+
+        item {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -281,6 +332,7 @@ fun HabitFormScreen(
                                     reason = reason.trim(),
                                     mode = mode,
                                     daysMask = daysMask,
+                                    reminderMinute = if (reminderOn) reminderMinute else -1,
                                     sortOrder = if (habitId == null) {
                                         container.habits.nextSortOrder()
                                     } else {
@@ -295,6 +347,19 @@ fun HabitFormScreen(
                 ) { Text(if (habitId == null) "Add habit" else "Save") }
             }
         }
+    }
+
+    if (showReminderPicker) {
+        ReminderTimeDialog(
+            initialMinute = reminderMinute,
+            onDismiss = { showReminderPicker = false },
+            onSave = { minute ->
+                // Saved with the habit; the alarm follows from the collector
+                // that watches the habit table.
+                reminderMinute = minute
+                showReminderPicker = false
+            }
+        )
     }
 }
 

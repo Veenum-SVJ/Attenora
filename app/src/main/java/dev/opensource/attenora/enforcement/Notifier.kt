@@ -219,15 +219,17 @@ object Notifier {
     }
 
     /**
-     * The daily habit nudge. Silent when everything is already done — a
+     * The habit nudge for one time slot: exactly the habits that are still
+     * unmarked and timed for it. Silent when everything is already done — a
      * reminder that tells you there is nothing to do is just noise.
      */
-    fun habitReminder(context: Context, done: Int, due: Int, leftNames: List<String>) {
+    fun habitReminder(context: Context, leftNames: List<String>) {
         if (leftNames.isEmpty()) return
+        val body = HabitCopy.reminderBody(leftNames)
         post(context, ID_HABIT_REMINDER, base(context, CHANNEL_HABITS)
-            .setContentTitle(HabitCopy.reminderTitle(due - done))
-            .setContentText(HabitCopy.reminderBody(leftNames))
-            .setStyle(Notification.BigTextStyle().bigText(HabitCopy.reminderBody(leftNames)))
+            .setContentTitle(HabitCopy.reminderTitle(leftNames.size))
+            .setContentText(body)
+            .setStyle(Notification.BigTextStyle().bigText(body))
             .setContentIntent(pendingOpenApp(context, tab = 3))
             .setAutoCancel(true)
             .build())

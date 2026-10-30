@@ -884,7 +884,7 @@ fun HabitRemindersScreen(onBack: () -> Unit) {
             ToggleRow(
                 title = "Remind me about habits",
                 subtitle = if (reminderMinute in 0..1439) {
-                    "Every day at ${formatClock(reminderMinute)} — only if something is left"
+                    "Every day at ${formatClock(reminderMinute)} — habits without a time of their own"
                 } else {
                     "Off"
                 },
@@ -892,10 +892,9 @@ fun HabitRemindersScreen(onBack: () -> Unit) {
                 checked = reminderMinute in 0..1439,
                 onCheckedChange = { on ->
                     val minute = if (on) 20 * 60 else -1
-                    scope.launch {
-                        container.settings.setHabitReminderMinute(minute)
-                        Alarms.setHabitReminderAlarm(context, minute)
-                    }
+                    // The alarm follows from the collector in AppContainer:
+                    // this default and the habit table both feed it.
+                    scope.launch { container.settings.setHabitReminderMinute(minute) }
                 }
             )
             if (reminderMinute in 0..1439) {
@@ -909,8 +908,10 @@ fun HabitRemindersScreen(onBack: () -> Unit) {
         }
         Text(
             "One notification a day, and it stays quiet when everything is " +
-                "already done. Android may deliver it a few minutes late — that is " +
-                "the price of not asking for exact alarms.",
+                "already done. A habit can ask for a time of its own on its own " +
+                "page; this is the default for the ones that don't. Android may " +
+                "deliver it a few minutes late — that is the price of not asking " +
+                "for exact alarms.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
@@ -948,7 +949,6 @@ fun HabitRemindersScreen(onBack: () -> Unit) {
             onSave = { minute ->
                 scope.launch {
                     container.settings.setHabitReminderMinute(minute)
-                    Alarms.setHabitReminderAlarm(context, minute)
                 }
                 showPicker = false
             }
@@ -1057,7 +1057,7 @@ fun DataScreen(onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ReminderTimeDialog(
+internal fun ReminderTimeDialog(
     initialMinute: Int,
     onDismiss: () -> Unit,
     onSave: (minutesAfterMidnight: Int) -> Unit

@@ -53,6 +53,34 @@ data class HabitBoard(
 }
 
 /**
+ * Which habit is nudged at which minute of the day.
+ *
+ * A habit that picked a time of its own owns that slot; a habit without one
+ * follows the daily default from Settings. The two switches are independent:
+ * turning the default off does not silence a habit that chose its own hour,
+ * and a habit with no time at all gets no slot — so no alarm is spent on it.
+ *
+ * Pure on purpose: the alarm side only ever sees the finished map, which is
+ * what makes "one alarm, next slot" testable without an AlarmManager.
+ */
+object HabitReminders {
+
+    /** -1 (or anything outside the day) means "no time of its own". */
+    fun effectiveMinute(habit: Habit, defaultMinute: Int): Int =
+        habit.reminderMinute.takeIf { it in 0..1439 } ?: defaultMinute
+
+    /** minute → the habits nudged then, in habit order. Sorted for stability. */
+    fun slots(habits: List<Habit>, defaultMinute: Int): Map<Int, List<Habit>> =
+        habits.groupBy { effectiveMinute(it, defaultMinute) }
+            .filterKeys { it in 0..1439 }
+            .toSortedMap()
+
+    /** The unmarked habits that belong to one firing of one slot. */
+    fun leftInSlot(left: List<Habit>, minute: Int, defaultMinute: Int): List<Habit> =
+        left.filter { effectiveMinute(it, defaultMinute) == minute }
+}
+
+/**
  * Reads and writes the habits tab. Every rule about what a streak means lives
  * in [HabitStreaks]; this class only turns taps into rows.
  */

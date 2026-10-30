@@ -196,6 +196,12 @@ data class Habit(
     val mode: String = HabitMode.CHECK,
     /** Bit 0 = Monday … bit 6 = Sunday; 127 = every day. */
     val daysMask: Int = 0x7F,
+    /**
+     * Minutes after midnight for this habit's own nudge, or -1 to follow the
+     * daily default in Settings. A time of its own is per habit because a
+     * morning habit and an evening one are not nudged at the same hour.
+     */
+    val reminderMinute: Int = -1,
     val createdAtMs: Long = System.currentTimeMillis(),
     val sortOrder: Int = 0
 )
@@ -711,7 +717,7 @@ interface MetaDao {
         BlockEvent::class, MetaEntry::class, ReelCount::class, Habit::class,
         HabitEntry::class, HabitStep::class, HabitStepCheck::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

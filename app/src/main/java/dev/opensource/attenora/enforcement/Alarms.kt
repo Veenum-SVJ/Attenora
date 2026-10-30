@@ -6,6 +6,8 @@ import android.content.Context
 import android.content.Intent
 import dev.opensource.attenora.AttenoraApplication
 import dev.opensource.attenora.data.FocusSchedule
+import dev.opensource.attenora.data.Habit
+import dev.opensource.attenora.data.HabitReminders
 import dev.opensource.attenora.ui.common.formatDuration
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -30,6 +32,8 @@ object Alarms {
     const val ACTION_HABIT_REMINDER = "dev.opensource.attenora.action.HABIT_REMINDER"
     const val ACTION_HABIT_REFRESH = "dev.opensource.attenora.action.HABIT_REFRESH"
     const val EXTRA_SCHEDULE_ID = "schedule_id"
+    /** Which time slot a habit-reminder alarm belongs to; -1 = unknown/legacy. */
+    const val EXTRA_HABIT_MINUTE = "habit_minute"
     private const val WINDOW_MS = 60_000L
     private const val DAY_MS = 24L * 60 * 60 * 1000L
 
@@ -64,12 +68,34 @@ object Alarms {
     }
 
     /**
-     * The one nudge a day for whatever is still unmarked. Inexact on purpose:
-     * Android may drift it by a few minutes, which is a fair price for never
-     * asking for the exact-alarm permission.
+     * Arm the next slot rather than the whole day: exactly one habit alarm
+     * exists at a time, so ten reminder times still cost one wakeup — and
+     * there is no stale alarm to cancel when a time is edited or a habit
+     * deleted. The PendingIntent is shared, so arming simply replaces the
+     * previous alarm.
+     *
+     * [afterMinute] is the minute that just fired (or the current minute), so
+     * a firing slot can never re-arm itself into a loop.
      */
-    fun setHabitReminderAlarm(context: Context, minuteOfDay: Int) {
-        setDailyAlarm(context, habitPendingIntent(context), minuteOfDay)
+    fun armNextHabitReminder(
+        context: Context,
+        slots: Map<Int, List<Habit>>,
+        afterMinute: Int = minuteOfDay()
+    ) {
+        // Earliest slot still ahead today, else tomorrow's earliest (which
+        // setDailyAlarm pushes to the next day when its time has passed).
+        val next = slots.keys.firstOrNull { it > afterMinute } ?: slots.keys.firstOrNull()
+        if (next == null) {
+            context.getSystemService(AlarmManager::class.java)?.cancel(habitPendingIntent(context, -1))
+            return
+        }
+        setDailyAlarm(context, habitPendingIntent(context, next), next)
+    }
+
+    /** Minutes after midnight, local wall clock. */
+    internal fun minuteOfDay(): Int {
+        val now = java.time.LocalTime.now()
+        return now.hour * 60 + now.minute
     }
 
     /**
@@ -171,16 +197,30 @@ object Alarms {
     private fun weeklyPendingIntent(context: Context): PendingIntent1 =
         actionPendingIntent(context, ACTION_WEEKLY, "weekly".hashCode(), 0L)
 
-    private fun habitPendingIntent(context: Context): PendingIntent1 =
-        actionPendingIntent(context, ACTION_HABIT_REMINDER, "habit_reminder".hashCode(), 0L)
+    /**
+     * One shared request code, so arming a slot replaces the previous alarm.
+     * The slot minute rides along in the extra: without it the receiver
+     * cannot tell midnight from "unknown" and would match zero habits.
+     */
+    private fun habitPendingIntent(context: Context, minute: Int): PendingIntent1 =
+        actionPendingIntent(context, ACTION_HABIT_REMINDER, "habit_reminder".hashCode(), 0L) {
+            putExtra(EXTRA_HABIT_MINUTE, minute)
+        }
 
     private fun habitRefreshPendingIntent(context: Context): PendingIntent1 =
         actionPendingIntent(context, ACTION_HABIT_REFRESH, "habit_refresh".hashCode(), 0L)
 
-    private fun actionPendingIntent(context: Context, action: String, requestCode: Int, id: Long): PendingIntent1 {
+    private fun actionPendingIntent(
+        context: Context,
+        action: String,
+        requestCode: Int,
+        id: Long,
+        extra: Intent.() -> Unit = {}
+    ): PendingIntent1 {
         val intent = Intent(context, ScheduleAlarmReceiver::class.java)
             .setAction(action)
             .putExtra(EXTRA_SCHEDULE_ID, id)
+            .also(extra)
         return android.app.PendingIntent.getBroadcast(
             context, requestCode, intent,
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
@@ -215,7 +255,7 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
                     Alarms.ACTION_SCHEDULE_END -> handleScheduleEnd(context, container, intent)
                     Alarms.ACTION_REMINDER -> handleReminder(context, container)
                     Alarms.ACTION_WEEKLY -> handleWeekly(context, container)
-                    Alarms.ACTION_HABIT_REMINDER -> handleHabitReminder(context, container)
+                    Alarms.ACTION_HABIT_REMINDER -> handleHabitReminder(context, container, intent)
                     Alarms.ACTION_HABIT_REFRESH -> handleHabitRefresh(context, container)
                 }
             } finally {
@@ -279,23 +319,32 @@ class ScheduleAlarmReceiver : BroadcastReceiver() {
     }
 
     /**
-     * The daily habit nudge. Re-arms before anything else, so a deferred alarm
-     * cannot swallow the next day's. Posts nothing when the day is already
-     * clear: the app should not beg for a tick you already made.
+     * One slot of the habit nudge: the habits timed for this minute, and only
+     * those — a morning habit has already had its say by evening. Re-arms the
+     * next slot before anything else, so a deferred alarm cannot swallow it,
+     * and posts nothing when this slot is already clear: the app should not
+     * beg for a tick you already made.
      */
-    private suspend fun handleHabitReminder(context: Context, container: dev.opensource.attenora.AppContainer) {
-        val minute = container.settings.habitReminderMinute.first()
-        Alarms.setHabitReminderAlarm(context, minute)
-        if (minute !in 0..1439) return
-        val board = container.habits.observe().first()
-        val left = board.leftToday()
-        if (left.isEmpty()) return
-        Notifier.habitReminder(
-            context,
-            done = board.doneToday().size,
-            due = board.dueToday().size,
-            leftNames = left.map { it.name }
+    private suspend fun handleHabitReminder(
+        context: Context,
+        container: dev.opensource.attenora.AppContainer,
+        intent: Intent
+    ) {
+        val default = container.settings.habitReminderMinute.first()
+        val slots = HabitReminders.slots(container.db.habitDao().all(), default)
+        val fired = intent.getIntExtra(Alarms.EXTRA_HABIT_MINUTE, -1)
+        // An alarm armed before this upgrade carries no slot in its extra;
+        // treat it as "now" so it re-arms correctly and notifies nobody.
+        val minute = if (fired in 0..1439) fired else Alarms.minuteOfDay()
+        Alarms.armNextHabitReminder(context, slots, afterMinute = minute)
+
+        val left = HabitReminders.leftInSlot(
+            container.habits.observe().first().leftToday(),
+            minute,
+            default
         )
+        if (left.isEmpty()) return
+        Notifier.habitReminder(context, leftNames = left.map { it.name })
     }
 
     /** Day rollover: re-label the ongoing status without waiting for a launch. */
@@ -327,7 +376,13 @@ class BootReceiver : BroadcastReceiver() {
                 // still the empty seed, so schedules would never be re-armed.
                 Alarms.rearmAll(context, container.db.focusScheduleDao().observeAll().first())
                 Alarms.setReminderAlarm(context, container.settings.reminderMinute.first())
-                Alarms.setHabitReminderAlarm(context, container.settings.habitReminderMinute.first())
+                Alarms.armNextHabitReminder(
+                    context,
+                    HabitReminders.slots(
+                        container.db.habitDao().all(),
+                        container.settings.habitReminderMinute.first()
+                    )
+                )
                 Alarms.setHabitRefreshAlarm(
                     context,
                     container.settings.habitNotifyOn.first(),

@@ -94,6 +94,7 @@ class BackupRepository(private val db: AppDatabase) {
                     JSONObject()
                         .put("id", h.id).put("name", h.name).put("reason", h.reason)
                         .put("mode", h.mode).put("days", h.daysMask)
+                        .put("reminderMinute", h.reminderMinute)
                         .put("createdAt", h.createdAtMs).put("order", h.sortOrder)
                 )
             }
@@ -247,6 +248,7 @@ class BackupRepository(private val db: AppDatabase) {
                         reason = o.optString("reason"),
                         mode = o.optString("mode", HabitMode.CHECK),
                         daysMask = o.optInt("days", 0x7F),
+                        reminderMinute = o.optInt("reminderMinute", -1),
                         createdAtMs = o.optLong("createdAt", System.currentTimeMillis()),
                         sortOrder = o.optInt("order")
                     )
