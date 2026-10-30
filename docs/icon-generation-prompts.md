@@ -1,4 +1,4 @@
-# FocusGuard — image asset pack & generation prompts
+# Attenora — image asset pack & generation prompts
 
 Everything you need to generate, what each asset is for, and ready-to-paste
 prompts. **Read §1 (style guide) first** — every prompt in §3 ends with the
@@ -6,7 +6,7 @@ same style block, so keep it as a snippet.
 
 > What you do **NOT** need to generate: all in-app symbols (≈50 icons —
 > stopwatch, shield, clock, chart bar, eye, sliders…) are Material-style
-> vectors drawn in code in [FgIcons.kt](../app/src/main/java/dev/opensource/focusguard/ui/icons/FgIcons.kt).
+> vectors drawn in code in [FgIcons.kt](../app/src/main/java/dev/opensource/attenora/ui/icons/FgIcons.kt).
 > No files to make for those.
 
 ---
@@ -74,7 +74,7 @@ drawables; the adaptive XML already wraps them.
 ### A/B — Launcher foreground (repeat once per color variant)
 
 ```
-Adaptive Android launcher icon foreground for an app called "FocusGuard", a
+Adaptive Android launcher icon foreground for an app called "Attenora", a
 screen-time and app-blocking focus app. Centered hourglass silhouette whose
 top half doubles as a shield outline, drawn as one continuous geometric form,
 thick rounded strokes, perfectly centered, designed to sit inside a circle
@@ -159,7 +159,7 @@ no text, no devices, no screenshots.
   happens on change).
 - **D** → colors only; nothing to generate.
 - **E** → new drawable + one-line change in
-  [Notifier.kt](../app/src/main/java/dev/opensource/focusguard/enforcement/Notifier.kt#L53)
+  [Notifier.kt](../app/src/main/java/dev/opensource/attenora/enforcement/Notifier.kt#L53)
   (`setSmallIcon(R.mipmap.ic_launcher)` → `R.drawable.ic_stat_fg`).
 - **F/G** → drop PNGs under `app/src/main/res/drawable/` and reference with
   `painterResource`. I can wire them the moment the files exist, e.g.:

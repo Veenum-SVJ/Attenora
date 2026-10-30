@@ -19,5 +19,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "FocusGuard"
+rootProject.name = "Attenora"
 include(":app")

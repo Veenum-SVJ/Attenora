@@ -1,4 +1,4 @@
-# FocusGuard
+# Attenora
 
 A lightweight, fully offline, open-source screen-time tracker and app blocker for
 Android — inspired by Stayfree, but built so that **nothing lingers in the
@@ -65,19 +65,19 @@ Copy `app-release.apk` to the phone and tap it (allow "install from unknown
 sources"). Then follow onboarding:
 
 1. Grant **Usage access**.
-2. Enable **FocusGuard → App monitor** in Settings → Accessibility.
-3. Optionally enable **FocusGuard → Website blocking** if you use site blocking.
+2. Enable **Attenora → App monitor** in Settings → Accessibility.
+3. Optionally enable **Attenora → Website blocking** if you use site blocking.
 
 ### Xiaomi / HyperOS notes
 
 MIUI/HyperOS aggressively kills background components. If blocking stops
-working: Settings → Apps → FocusGuard → Battery saver → **No restrictions**,
+working: Settings → Apps → Attenora → Battery saver → **No restrictions**,
 and enable **Autostart**. This only keeps the accessibility service alive —
-FocusGuard itself still has nothing running in the background.
+Attenora itself still has nothing running in the background.
 
 ## Privacy
 
-FocusGuard has no INTERNET permission. It cannot phone home even if it wanted
+Attenora has no INTERNET permission. It cannot phone home even if it wanted
 to. All data lives in app-private storage and dies with the app.
 
 ## License
